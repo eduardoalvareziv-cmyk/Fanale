@@ -1,0 +1,12 @@
+{
+  "name": "fanale",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Fanale: find the researchers who know a rare disease best (Caribbean AI Summit Healthcare Hackathon 2026)",
+  "scripts": {
+    "test": "node tests/simulated-search.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.47.0"
+  }
+}
