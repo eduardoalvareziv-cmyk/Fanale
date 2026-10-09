@@ -89,14 +89,20 @@
   }
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
   const fmtN = (n) => { try { return new Intl.NumberFormat(I.getLang()).format(n); } catch { return String(n); } };
+  // Header line: h-index, works and the OpenAlex profile link. The citation total itself sits in the contact block.
   function citeLine(r) {
-    if (r.citePending) return `<div class="cites pending">${esc(tr("citePending"))}</div>`;
-    if (r.citations == null) return r.example ? "" : `<div class="cites na">${esc(tr("citeNotFound"))}</div>`;
-    const parts = [`<b>${esc(tr("citedTimes", { n: fmtN(r.citations) }))}</b>`];
+    if (r.citations == null) return "";
+    const parts = [];
     if (r.hIndex != null) parts.push(esc(tr("hIndex", { h: fmtN(r.hIndex) })));
     if (r.works != null) parts.push(esc(tr("worksN", { n: fmtN(r.works) })));
-    const link = r.oaUrl ? ` · <a href="${esc(r.oaUrl)}" target="_blank" rel="noopener">OpenAlex</a>` : "";
-    return `<div class="cites">${parts.join(" · ")}${link}</div>`;
+    const link = r.oaUrl ? `<a href="${esc(r.oaUrl)}" target="_blank" rel="noopener">OpenAlex</a>` : "";
+    const all = parts.concat(link ? [link] : []);
+    return all.length ? `<div class="cites">${all.join(" · ")}</div>` : "";
+  }
+  function totalCitesHtml(r) {
+    if (r.citePending) return `<span class="pending">${esc(tr("citePending"))}</span>`;
+    if (r.citations == null) return r.example ? naHtml() : `<span class="na">${esc(tr("citeNotFound"))}</span>`;
+    return `<b class="totalCites">${esc(fmtN(r.citations))}</b>`;
   }
   function card(r, i) {
     const ids = (r.ids || []).map(idLink).join("");
@@ -111,7 +117,7 @@
         ${citeLine(r)}</div></div>
       <div class="block"><div class="label">${esc(tr("researcherContact"))}</div>
         <div class="who"><div class="avatar" aria-hidden="true">${esc(initials(r))}</div><div class="whoText">${profileLine(r)}</div></div>
-        <dl><dt>${esc(tr("phone"))}</dt><dd>${val(r.phone)}</dd><dt>${esc(tr("email"))}</dt><dd>${val(r.email)}</dd></dl></div>
+        <dl><dt>${esc(tr("phone"))}</dt><dd>${val(r.phone)}</dd><dt>${esc(tr("email"))}</dt><dd>${val(r.email)}</dd><dt>${esc(tr("totalCites"))}</dt><dd>${totalCitesHtml(r)}</dd></dl></div>
       <div class="block"><div class="label">${esc(tr("workOrg"))}</div>
         <div class="org">${val(r.organization)}${r.country ? `<span class="country">${esc(r.country)}</span>` : ""}</div>${r.rorName ? `<div class="src">${esc(tr("matchedRor", { name: r.rorName }))}</div>` : ""}
         <dl><dt>${esc(tr("address"))}</dt><dd>${val(r.organizationAddress)}</dd><dt>${esc(tr("phone"))}</dt><dd>${orgContact(r, "organizationPhone")}</dd><dt>${esc(tr("email"))}</dt><dd>${orgContact(r, "organizationEmail")}</dd><dt>${esc(tr("website"))}</dt><dd>${site}</dd></dl>
