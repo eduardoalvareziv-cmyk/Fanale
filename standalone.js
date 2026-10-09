@@ -58,8 +58,10 @@
   const resetSteps = () => ["pubmed", "trials", "db", "cite", "org"].forEach((s) => setStep(s, null, ""));
   // Notices are kept as translation keys so they can be redrawn in another language.
   let lastNotice = { kind: "", keys: [] };
+  let spellSpec = null; // set when the search term was auto-corrected: {k, v}
   function notice(kind, keys) {
-    lastNotice = { kind, keys: (Array.isArray(keys) ? keys : keys ? [keys] : []) };
+    const ks = Array.isArray(keys) ? keys : keys ? [keys] : [];
+    lastNotice = { kind, keys: spellSpec && !ks.includes("searching") ? [spellSpec, ...ks] : ks };
     const html = lastNotice.keys.map((k) => (typeof k === "string" ? tr(k) : tr(k.k, k.v))).join("<br>");
     $("notice").innerHTML = html ? `<div class="notice ${kind}" role="status"><div>${html}</div></div>` : "";
   }
@@ -534,14 +536,34 @@
   }
 
   // ---------- Search ----------
-  async function runSearch(q) {
+  // PubMed's spelling suggestion (ESpell) for the typed diagnosis. Returns "" when none, or on any failure.
+  async function spellFix(q, signal) {
+    try {
+      const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 4000));
+      const xml = await Promise.race([getOK(`${EUTILS}espell.fcgi?db=pubmed&tool=fanale&term=${encodeURIComponent(q)}`, signal, "text"), timer]);
+      const c = (new DOMParser().parseFromString(xml, "text/xml").querySelector("CorrectedQuery") || {}).textContent || "";
+      const fixed = c.replace(/\s+/g, " ").trim();
+      return fixed && fixed.toLowerCase() !== q.toLowerCase() ? fixed : "";
+    } catch (e) { if (e && e.name === "AbortError") throw e; return ""; }
+  }
+  async function runSearch(q, skipSpell) {
     running = true; $("go").disabled = true; $("stop").hidden = false;
     resetSteps();
+    spellSpec = null;
     notice("", "searching");
     setHead(() => ({ title: tr("searchingFor", { q }), sub: "" }));
     ctl = new AbortController();
     const problems = [];
     try {
+      if (!skipSpell) {
+        const fixed = await spellFix(q, ctl.signal);
+        if (fixed) {
+          spellSpec = { k: "spellUsed", v: { q: esc(fixed), orig: esc(q) } };
+          $("q").value = fixed;
+          q = fixed;
+          setHead(() => ({ title: tr("searchingFor", { q }), sub: "" }));
+        }
+      }
       const [pm, ct] = await Promise.allSettled([fetchPubMed(q, ctl.signal), fetchTrials(q, ctl.signal)]);
       if ([pm, ct].some((x) => x.status === "rejected" && x.reason && x.reason.name === "AbortError")) throw { name: "AbortError" };
       if (pm.status === "rejected") { setStep("pubmed", "error"); problems.push("pubmedDown"); }
@@ -581,6 +603,13 @@
   }
 
   // ---------- Wire up ----------
+  $("notice").addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest("a[data-spell]");
+    if (!a) return;
+    e.preventDefault();
+    const orig = a.getAttribute("data-spell");
+    if (orig && !running) { $("q").value = orig; runSearch(orig, true); }
+  });
   $("form").addEventListener("submit", (e) => { e.preventDefault(); const q = $("q").value.trim(); if (q && !running) runSearch(q); });
   $("stop").addEventListener("click", () => ctl && ctl.abort());
   document.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.q; if (!running) runSearch(b.dataset.q); }));

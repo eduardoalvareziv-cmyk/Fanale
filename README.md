@@ -70,6 +70,7 @@ Open https://eduardoalvareziv-cmyk.github.io/Fanale/, type a diagnosis (for exam
 - **PubMed E-utilities:** `esearch` for the 40 newest articles, and `efetch` for titles, authors, affiliations and MeSH indexing.
 - **ClinicalTrials.gov API v2:** active trials, with officials, contacts, sites and interventions.
 - **ROR (Research Organization Registry):** matches each raw affiliation to an official organization, its website and its Wikidata ID. Only ROR's own confident ("chosen") match is used.
+- **PubMed ESpell:** a spelling suggestion for the typed diagnosis.
 - **Wikidata:** the matched organization's main phone number, email and street address, when recorded.
 - **OpenAlex:** each researcher's total citations, h-index and number of works.
 
@@ -81,6 +82,7 @@ How the website version builds each card:
 - **Contacts:** emails are parsed from PubMed affiliations. Phone numbers and emails come from trial registrations. Organization contacts come from the trial site contact at the researcher's institution.
 - **Medicines:** substances PubMed's indexers tagged with the MeSH qualifier "therapeutic use", and trial interventions of type drug or biological.
 - **Treatments:** trial interventions such as procedures, devices and behavioral therapy. Placebo and sham arms are excluded.
+- **Spell check:** before searching, the term goes through PubMed's spelling suggester (ESpell). If it finds a likely typo, Fanale searches the corrected term, updates the search box, and shows "Showing results for …" with a "Search instead for …" link to use the original wording. If the suggester is slow or down, the original term is searched.
 - **Who is shown:** researchers appear only if they have a treatment or medicine and at least one real contact: a phone or email for the researcher or their organization. Everyone else stays in the temporary database table.
 - **Organization contacts:** the trial site contact comes first. The organization's general phone number and email from Wikidata are used only when that's missing, labeled with their source.
 - **Missing contacts:** where a profile or organization contact isn't in any source, the card offers a web-search link instead.

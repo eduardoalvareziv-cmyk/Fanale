@@ -77,7 +77,8 @@ const OA_SEARCH_ARANOW = { results: [
   { id: "https://openalex.org/A9", display_name: "Cynthia Aranow", cited_by_count: 9000, works_count: 210, summary_stats: { h_index: 48 }, last_known_institutions: [{ display_name: "Feinstein Institutes for Medical Research" }] },
   { id: "https://openalex.org/A8", display_name: "C. Aranow", cited_by_count: 3, works_count: 1, summary_stats: { h_index: 1 }, last_known_institutions: [{ display_name: "Unrelated College" }] }] };
 
-async function run(browser, { failPubMed = false, failRor = false, failOpenAlex = false } = {}) {
+async function run(browser, { failPubMed = false, failRor = false, failOpenAlex = false, query = "systemic lupus erythematosus", clickOriginal = false } = {}) {
+  const spellCalls = [], esearchTerms = [];
   const page = await browser.newPage({ viewport: { width: 1280, height: 1600 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -85,6 +86,8 @@ async function run(browser, { failPubMed = false, failRor = false, failOpenAlex 
   await page.route("https://eutils.ncbi.nlm.nih.gov/**", (r) => {
     if (failPubMed) return r.abort();
     const u = r.request().url();
+    if (u.includes("espell")) { const term = decodeURIComponent(new URL(u).searchParams.get("term")); spellCalls.push(term); return r.fulfill({ status: 200, contentType: "text/xml", headers: { "Access-Control-Allow-Origin": "*" }, body: `<?xml version="1.0"?><eSpellResult><Database>pubmed</Database><Query>${term}</Query><CorrectedQuery>${/lupus/i.test(term) ? "" : "systemic lupus erythematosus"}</CorrectedQuery></eSpellResult>` }); }
+    if (u.includes("esearch")) { esearchTerms.push(decodeURIComponent(new URL(u).searchParams.get("term"))); }
     if (u.includes("esearch")) return r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(ESEARCH) });
     return r.fulfill({ status: 200, contentType: "text/xml", headers: { "Access-Control-Allow-Origin": "*" }, body: EFETCH });
   });
@@ -107,7 +110,7 @@ async function run(browser, { failPubMed = false, failRor = false, failOpenAlex 
   await page.route("https://www.wikidata.org/**", (r) => r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(WIKIDATA) }));
   await page.route("https://clinicaltrials.gov/**", (r) => r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(CT) }));
   await page.goto(PAGE);
-  await page.fill("#q", "systemic lupus erythematosus");
+  await page.fill("#q", query);
   await page.click("#go");
   await page.waitForFunction(() => { const s = document.getElementById("s-org"); return ["s-org", "s-cite"].every((id) => { const s = document.getElementById(id); return s.classList.contains("done") || s.classList.contains("error"); }); }, null, { timeout: 15000 });
   const order = () => page.evaluate(() => [...document.querySelectorAll(".cont")].map((s) => [...s.querySelectorAll(".card .name")].map((n) => n.textContent.trim().split(" ").pop()).join(">")).join(" | "));
@@ -115,6 +118,11 @@ async function run(browser, { failPubMed = false, failRor = false, failOpenAlex 
   for (const mode of ["cited", "newest", "top"]) { await page.click(`#sortBar button[data-sort="${mode}"]`); orders[mode] = await order(); }
   const dbCites = await page.evaluate(() => [...document.querySelectorAll("#dbRows tr")].map((tr) => tr.children[1].textContent.trim() + "=" + tr.children[2].textContent.trim()));
   const citeStep = await page.evaluate(() => document.getElementById("s-cite").className + " " + document.getElementById("s-cite").textContent);
+  const spellNotice = await page.evaluate(() => document.getElementById("notice").innerText + "|" + document.getElementById("q").value);
+  if (clickOriginal) {
+    await page.click("#notice a[data-spell]");
+    await page.waitForFunction(() => { const s = document.getElementById("s-cite"); return s.classList.contains("done") || s.classList.contains("error"); }, null, { timeout: 15000 });
+  }
   const out = await page.evaluate(() => ({
     sections: [...document.querySelectorAll(".cont")].map((s) => ({ name: s.querySelector(".contHead").firstChild.textContent.trim(), cards: [...s.querySelectorAll(".card")].map((c) => c.innerText) })),
     meta: document.getElementById("rmeta").textContent, notice: document.getElementById("notice").innerText,
@@ -122,7 +130,7 @@ async function run(browser, { failPubMed = false, failRor = false, failOpenAlex 
     links: [...document.querySelectorAll(".card a")].map((a) => a.textContent + " " + a.href),
   }));
   await page.close();
-  return { ...out, errors, orders, dbCites, citeStep, oaCalls };
+  return { ...out, errors, spellCalls, esearchTerms, spellNotice, orders, dbCites, citeStep, oaCalls };
 }
 
 const browser = await chromium.launch();
@@ -170,6 +178,14 @@ try {
   check(r.dbCites.some((x) => /Aranow.*=9,000$/.test(x)) && r.dbCites.some((x) => /Nadal=Not listed/.test(x)), "database table has a citations column");
   check(/done/.test(r.citeStep) && /4 matched/.test(r.citeStep), `citation step reports matches (${r.citeStep.trim()})`);
   check(r.oaCalls.length <= 4, `OpenAlex calls kept small (${r.oaCalls.length})`);
+
+  // Spell check
+  check(r.spellCalls.length === 1 && r.esearchTerms[0] === "systemic lupus erythematosus", "correctly spelled term is searched unchanged");
+  const sp = await run(browser, { query: "systmic erythmatosus", clickOriginal: true });
+  check(/Showing results for systemic lupus erythematosus/.test(sp.spellNotice) && /systemic lupus erythematosus$/.test(sp.spellNotice), `misspelled term is corrected and the input updated (${sp.spellNotice.replace(/\n/g, " ")})`);
+  check(sp.esearchTerms[0] === "systemic lupus erythematosus", "corrected term is what PubMed searches");
+  check(sp.esearchTerms[1] === "systmic erythmatosus" && sp.spellCalls.length === 1, "'Search instead' link searches the original wording without re-correcting");
+  check(sp.errors.length === 0, "no script errors during spell check");
 
   const o = await run(browser, { failOpenAlex: true });
   const oAll = o.sections.flatMap((s) => s.cards).join("\n");
