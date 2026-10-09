@@ -186,6 +186,9 @@ td.date{white-space:nowrap}
 .lang{display:inline-flex;align-items:center;gap:6px;color:var(--ivory);border:1px solid var(--gold);border-radius:999px;padding:4px 10px 4px 10px}
 .lang select{background:transparent;color:var(--ivory);border:0;font:600 13.5px var(--f-ui);cursor:pointer;padding:2px 0}
 .lang select option{color:#102F27;background:#F7F3E9}
+.hdrPrint{display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:999px;border:1px solid var(--gold);background:transparent;color:var(--ivory);cursor:pointer}
+.hdrPrint:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+@media (max-width:640px){.hdrPrint{display:inline-flex}#printBtn{display:none}}
 .lang:focus-within{outline:3px solid var(--gold);outline-offset:2px}
 .hint{margin:0;font-size:13.5px;color:var(--muted);max-width:70ch}
 dd,.mla,.org,.name,.occ,td,.txName,.date{unicode-bidi:plaintext}
@@ -227,7 +230,7 @@ footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px}
       <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 L20 9 H12 Z" fill="var(--beacon)"/><rect x="12.5" y="9" width="7" height="16" rx="1" fill="none" stroke="#F2EBDD" stroke-width="1.8"/><path d="M10 25 H22 L23.5 29 H8.5 Z" fill="#F2EBDD"/><path d="M21 7 L30 3 M21 9 L30 11 M11 7 L2 3 M11 9 L2 11" stroke="var(--beacon)" stroke-width="1.6" stroke-linecap="round"/></svg>
       Fanale
     </div>
-    <div class="topRight"><small data-i18n="tagline">Rare-disease specialist search · PubMed + ClinicalTrials.gov</small><label class="lang" for="lang"><span class="sr" data-i18n="langLabel">Language</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9s1.3-6.3 3.8-9z"/></svg><select id="lang"></select></label></div>
+    <div class="topRight"><small data-i18n="tagline">Rare-disease specialist search · PubMed + ClinicalTrials.gov</small><label class="lang" for="lang"><span class="sr" data-i18n="langLabel">Language</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9s1.3-6.3 3.8-9z"/></svg><select id="lang"></select></label><button type="button" id="hdrPrint" class="hdrPrint" data-i18n-aria="printList" aria-label="Print list"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2"/><rect x="6" y="14" width="12" height="7"/></svg></button></div>
   </header>
 
   <section class="desk" aria-labelledby="h">
@@ -303,8 +306,8 @@ footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px}
   <div class="mlaFoot"><button type="button" id="mlaCopy" data-i18n="mlaCopyAll">Copy all</button><button type="button" id="mlaPrint" data-i18n="mlaPrint">Print</button><button type="button" id="mlaClose" data-i18n="mlaClose">Close</button></div>
 </dialog>
 
-<script src="i18n-more.js?v=20261009d"></script>
-<script src="i18n.js?v=20261009d"></script>
-<script src="standalone.js?v=20261009d"></script>
+<script src="i18n-more.js?v=20261009e"></script>
+<script src="i18n.js?v=20261009e"></script>
+<script src="standalone.js?v=20261009e"></script>
 </body>
 </html>

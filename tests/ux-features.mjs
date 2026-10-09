@@ -59,6 +59,12 @@ try {
   check(copied && copied.split("\n\n").length === 3 && !/<i>/.test(copied), "Copy all gives plain MLA lines");
   await page.click("#mlaClose");
   check(!(await page.evaluate(() => document.getElementById("mlaDlg").open)), "dialog closes");
+  await page.setViewportSize({ width: 390, height: 800 });
+  const mob = await page.evaluate(() => { const l = document.querySelector(".lang").getBoundingClientRect(), p = document.getElementById("hdrPrint").getBoundingClientRect(); return { show: p.width > 0, besideLang: Math.abs((l.top + l.bottom) / 2 - (p.top + p.bottom) / 2) < 12 && p.left >= l.right - 1, toolHidden: getComputedStyle(document.getElementById("printBtn")).display === "none" }; });
+  check(mob.show && mob.besideLang, "mobile: Print button sits beside the language menu");
+  check(mob.toolHidden, "mobile: duplicate Print list button hidden");
+  await page.setViewportSize({ width: 1400, height: 900 });
+  check(await page.evaluate(() => getComputedStyle(document.getElementById("hdrPrint")).display === "none"), "desktop: header Print button hidden");
   check(errors.length === 0, "no script errors" + (errors.length ? ": " + errors[0] : ""));
 } finally { await browser.close(); }
 console.log(failures ? `${failures} check(s) failed` : "All checks passed");

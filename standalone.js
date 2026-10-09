@@ -690,6 +690,7 @@
     render(lastList, headFn);
   }));
   $("printBtn").addEventListener("click", () => window.print());
+  $("hdrPrint").addEventListener("click", () => window.print());
 
   // ---------- Copy summary (to bring to a doctor) ----------
   function summaryText(r) {
