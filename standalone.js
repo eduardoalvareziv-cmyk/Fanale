@@ -73,8 +73,17 @@
     if (x.type === "nct") return `<a href="https://clinicaltrials.gov/study/${esc(x.id)}" target="_blank" rel="noopener">${esc(x.id)}</a>`;
     return "";
   }
+  // ---------- Source filter: publications / trials ----------
+  let srcFilter = "all";
+  try { const m = localStorage.getItem("fanale-src"); if (m === "all" || m === "pub" || m === "trial") srcFilter = m; } catch {}
+  const itemsOf = (r) => (r.items && r.items.length ? r.items : [{ date: r.date, trialDate: r.trialDate, mla: r.mla, ids: r.ids || [] }]);
+  const itemMatches = (it, m) => m === "all" || (m === "trial") === !!it.trialDate;
+  const itemOf = (r, m = srcFilter) => itemsOf(r).find((it) => itemMatches(it, m)) || null; // items are newest first
+  const txOf = (r, m = srcFilter) => (r.treatments || []).filter((t) => m === "all" || !t.src || (m === "trial") === (t.src.type === "nct"));
+  const dateOf = (r) => { const it = r.items ? itemOf(r) : null; return it ? it.date : r.date; };
+
   function treatList(r) {
-    const t = r.treatments || [];
+    const t = txOf(r);
     if (!t.length) return `<div class="na">${esc(tr("noneNamed"))}</div>`;
     return `<ul class="tx">${t.map((x) => `<li><span class="txName">${esc(x.name)}</span><span class="kind ${x.kind === "Medicine" ? "med" : "trt"}">${esc(tr(x.kind === "Medicine" ? "medicine" : "treatment"))}</span><span class="txSrc">${x.src ? idLink(x.src) : ""}</span></li>`).join("")}</ul>
       <div class="src">${esc(tr("notRec"))}</div>`;
@@ -105,7 +114,8 @@
     return `<b class="totalCites">${esc(fmtN(r.citations))}</b>`;
   }
   function card(r, i) {
-    const ids = (r.ids || []).map(idLink).join("");
+    const it = itemOf(r) || itemsOf(r)[0];
+    const ids = (it.ids || []).map(idLink).join("");
     const missingOrg = r.organization && !(has(r.organizationPhone) && has(r.organizationEmail)) && !r.example && !r.orgPending;
     const orgSrc = r.orgSource ? `<div class="src">${esc(r.orgSource.kind === "trial" ? tr("orgFromTrial", { nct: r.orgSource.nct }) : tr("orgFromWikidata", { name: r.orgSource.name }))}</div>` : "";
     const site = r.website ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">${esc(hostOf(r.website))}</a>` : (r.orgPending ? `<span class="pending">${esc(tr("lookingUp"))}</span>` : naHtml());
@@ -123,17 +133,19 @@
         <dl><dt>${esc(tr("address"))}</dt><dd>${val(r.organizationAddress)}</dd><dt>${esc(tr("phone"))}</dt><dd>${orgContact(r, "organizationPhone")}</dd><dt>${esc(tr("email"))}</dt><dd>${orgContact(r, "organizationEmail")}</dd><dt>${esc(tr("website"))}</dt><dd>${site}</dd></dl>
         ${orgSrc}${findOrg}</div>
       <div class="block"><div class="label">${esc(tr("txHead"))}</div>${treatList(r)}</div>
-      <div class="block pub"><div class="label">${esc(tr(r.trialDate ? "recentTrial" : "recentPub"))}</div>
-        <div class="date">${val(r.date)}</div>
-        <div class="mla">${r.mla ? safeMLA(r.mla) : naHtml()}</div>
+      <div class="block pub"><div class="label">${esc(tr(it.trialDate ? "recentTrial" : "recentPub"))}</div>
+        <div class="date">${val(it.date)}</div>
+        <div class="mla">${it.mla ? safeMLA(it.mla) : naHtml()}</div>
         ${ids ? `<div class="ids">${ids}</div>` : ""}</div>
+      <div class="cardTools"><button type="button" class="copyBtn" data-uid="${esc(r.uid)}">${esc(tr("copySummary"))}</button></div>
     </article>`;
   }
 
   // Shown only with at least one real contact: a phone or email for the researcher or their organization.
   // While an organization lookup is still running, the card stays until the lookup finishes.
   const reachable = (r) => has(r.email) || has(r.phone) || has(r.organizationPhone) || has(r.organizationEmail);
-  const visible = (r) => (r.treatments || []).length > 0 && (reachable(r) || !!r.orgPending);
+  const visibleIn = (r, m) => txOf(r, m).length > 0 && !!itemOf(r, m) && (reachable(r) || !!r.orgPending);
+  const visible = (r) => visibleIn(r, srcFilter);
   // Ranking: most cited first (default) or newest first. Researchers without a citation count go after those with one.
   // "top" (default) blends how recent and how cited each researcher is; "cited" and "newest" sort by one only.
   let sortMode = "top";
@@ -146,7 +158,7 @@
     return vals.map((v) => at.get(v));
   };
   const blendScores = (arr) => {
-    const rec = percentiles(arr.map((r) => dateKey(r.date)));
+    const rec = percentiles(arr.map((r) => dateKey(dateOf(r))));
     const cit = percentiles(arr.map((r) => r.citations ?? -1));
     // A researcher with no citation count found gets no citation credit.
     return new Map(arr.map((r, i) => [r, 0.5 * rec[i] + 0.5 * (r.citations == null ? 0 : cit[i])]));
@@ -166,6 +178,7 @@
   function setHead(fn) { headFn = fn; const m = fn(); $("rtitle").textContent = m.title; $("rmeta").textContent = m.sub || ""; }
   function render(list, metaFn) {
     lastList = list;
+    list.forEach((r, i) => { if (r.uid == null) r.uid = i; });
     let html = "";
     for (const { c, people } of groupShown(list)) {
       const cName = c ? tr(c) : tr("locNotListed");
@@ -177,20 +190,26 @@
     if (metaFn) setHead(metaFn);
     $("dbCount").textContent = "· " + I.plural(list.length, "record1", "recordN");
     document.querySelectorAll("#sortBar button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.sort === sortMode)));
-    $("dbRows").innerHTML = ranked(list).map((r) => `<tr>
-      <td class="date">${val(r.date)}</td>
+    document.querySelectorAll("#srcBar button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.src === srcFilter));
+      const n = list.filter((r) => visibleIn(r, b.dataset.src)).length;
+      b.querySelector(".cnt").textContent = list.length && !list.every((r) => r.example) ? String(n) : "";
+    });
+    $("dbRows").innerHTML = ranked(list).map((r) => { const it = itemOf(r) || itemsOf(r)[0]; return `<tr>
+      <td class="date">${val(it.date)}</td>
       <td>${esc(fullName(r))}${r.occupation ? `<br><span class="na" style="font-style:normal">${esc(r.occupation)}</span>` : ""}</td>
       <td class="num">${r.citations != null ? esc(fmtN(r.citations)) : naHtml()}</td>
       <td>${val(r.organization)}</td><td>${val(r.country)}</td><td>${r.continent ? esc(tr(r.continent)) : naHtml()}</td><td>${val(r.email)}</td><td>${val(r.phone)}</td>
       <td>${(r.treatments || []).map((x) => `${esc(x.name)} (${esc(tr(x.kind === "Medicine" ? "medicine" : "treatment").toLowerCase())})`).join(", ") || naHtml()}</td>
-      <td>${r.mla ? safeMLA(r.mla) : naHtml()}</td></tr>`).join("");
+      <td>${it.mla ? safeMLA(it.mla) : naHtml()}</td></tr>`; }).join("");
   }
   function subFor(list, q) {
     const n = groupShown(list).reduce((a, g) => a + g.people.length, 0);
-    const vis = list.filter(visible).length, hidden = list.length - vis, over = vis - n;
+    const vis = list.filter(visible).length, base = list.filter((r) => visibleIn(r, "all")).length;
+    const hidden = list.length - base, filtered = base - list.filter((r) => visibleIn(r, "all") && visible(r)).length, over = vis - n;
     return {
       title: tr(n ? "resultsFor" : "noneWithContact", { q }),
-      sub: tr(subKey(), { n, max: PER_CONTINENT }) + (over ? tr("overLimit", { n: over }) : "") + (hidden ? tr("hiddenSub", { n: hidden }) : ""),
+      sub: tr(subKey(), { n, max: PER_CONTINENT }) + (over ? tr("overLimit", { n: over }) : "") + (filtered ? tr("filteredSub", { n: filtered }) : "") + (hidden ? tr("hiddenSub", { n: hidden }) : ""),
     };
   }
 
@@ -207,7 +226,7 @@
     const m = String(d || "").match(/(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?/);
     return m ? `${m[1]}-${String(m[2] || 0).padStart(2, "0")}-${String(m[3] || 0).padStart(2, "0")}` : "0000-00-00";
   };
-  const byRecent = (a, b) => dateKey(b.date).localeCompare(dateKey(a.date));
+  const byRecent = (a, b) => dateKey(dateOf(b)).localeCompare(dateKey(dateOf(a)));
   const SMALL = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "the", "to", "with"]);
   const titleCase = (s) => String(s || "").split(/\s+/).map((w, i) => (i > 0 && SMALL.has(w.toLowerCase())) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   function mlaArticle(a) {
@@ -648,6 +667,45 @@
   sugBox.addEventListener("click", (e) => { const li = e.target.closest("li[data-i]"); if (li) sugPick(Number(li.dataset.i)); });
   I.onChange(() => { if (sugItems.length) sugRender(); });
 
+  document.querySelectorAll("#srcBar button").forEach((b) => b.addEventListener("click", () => {
+    srcFilter = b.dataset.src;
+    try { localStorage.setItem("fanale-src", srcFilter); } catch {}
+    render(lastList, headFn);
+  }));
+  $("printBtn").addEventListener("click", () => window.print());
+
+  // ---------- Copy summary (to bring to a doctor) ----------
+  function summaryText(r) {
+    const it = itemOf(r) || itemsOf(r)[0];
+    const L = [tr("summaryIntro"), "", [fullName(r), r.occupation].filter(has).join(" — ")];
+    const org = [r.organization, r.country].filter(has).join(", "); if (org) L.push(org);
+    if (has(r.organizationAddress)) L.push(`${tr("address")}: ${r.organizationAddress}`);
+    if (has(r.phone)) L.push(`${tr("researcherContact")} · ${tr("phone")}: ${r.phone}`);
+    if (has(r.email)) L.push(`${tr("researcherContact")} · ${tr("email")}: ${r.email}`);
+    if (has(r.organizationPhone)) L.push(`${tr("workOrg")} · ${tr("phone")}: ${r.organizationPhone}`);
+    if (has(r.organizationEmail)) L.push(`${tr("workOrg")} · ${tr("email")}: ${r.organizationEmail}`);
+    if (has(r.website)) L.push(`${tr("website")}: ${r.website}`);
+    if (r.citations != null) L.push(`${tr("totalCites")}: ${fmtN(r.citations)}`);
+    const tx = txOf(r).map((t) => t.name);
+    if (tx.length) L.push("", `${tr("txHead")}: ${tx.join(", ")}`);
+    if (it && it.mla) L.push("", `${tr(it.trialDate ? "recentTrial" : "recentPub")} (${it.date || ""}):`, it.mla.replace(/<\/?i>/g, ""));
+    L.push("", tr("notRec"), "Fanale · Struvante");
+    return L.join("\n");
+  }
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
+    try {
+      const ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;opacity:0";
+      document.body.appendChild(ta); ta.select(); const ok = document.execCommand("copy"); ta.remove(); return ok;
+    } catch { return false; }
+  }
+  $("grid").addEventListener("click", async (e) => {
+    const b = e.target.closest && e.target.closest("button.copyBtn"); if (!b) return;
+    const r = lastList.find((x) => String(x.uid) === b.dataset.uid); if (!r) return;
+    const ok = await copyText(summaryText(r));
+    b.textContent = tr(ok ? "copied" : "copyFailed"); b.classList.toggle("done", ok);
+    setTimeout(() => { if (b.isConnected) { b.textContent = tr("copySummary"); b.classList.remove("done"); } }, 2000);
+  });
   $("form").addEventListener("submit", (e) => { e.preventDefault(); sugClose(); const q = $("q").value.trim(); if (q && !running) runSearch(q); });
   $("stop").addEventListener("click", () => ctl && ctl.abort());
   document.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => { sugClose(); $("q").value = b.dataset.q; if (!running) runSearch(b.dataset.q); }));
@@ -672,5 +730,5 @@
   }));
 
   notice("example", "exampleNotice");
-  render(EXAMPLE, () => ({ title: tr("exampleTitle"), sub: tr(subKey(), { n: 5, max: PER_CONTINENT }) }));
+  render(EXAMPLE, () => ({ title: tr("exampleTitle"), sub: tr(subKey(), { n: groupShown(EXAMPLE).reduce((a, g) => a + g.people.length, 0), max: PER_CONTINENT }) }));
 })();

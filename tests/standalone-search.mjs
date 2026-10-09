@@ -79,6 +79,7 @@ const OA_SEARCH_ARANOW = { results: [
 
 async function run(browser, { failPubMed = false, failRor = false, failOpenAlex = false } = {}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1600 } });
+  await page.addInitScript(() => { window.__copied = null; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (s) => { window.__copied = s; } }, configurable: true }); });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.route("https://fonts.googleapis.com/**", (r) => r.abort());
@@ -113,6 +114,18 @@ async function run(browser, { failPubMed = false, failRor = false, failOpenAlex 
   const order = () => page.evaluate(() => [...document.querySelectorAll(".cont")].map((s) => [...s.querySelectorAll(".card .name")].map((n) => n.textContent.trim().split(" ").pop()).join(">")).join(" | "));
   const orders = { top: await order() };
   for (const mode of ["cited", "newest", "top"]) { await page.click(`#sortBar button[data-sort="${mode}"]`); orders[mode] = await order(); }
+  const names = () => page.evaluate(() => [...document.querySelectorAll(".card .name")].map((n) => n.textContent.trim().split(" ").pop()).sort().join(","));
+  const filt = { all: await names(), counts: await page.evaluate(() => [...document.querySelectorAll("#srcBar button")].map((b) => b.querySelector(".cnt").textContent).join("/")) };
+  await page.click('#srcBar button[data-src="trial"]'); filt.trial = await names();
+  filt.trialRef = await page.evaluate(() => (document.querySelector(".card .pub") || {}).innerText || "NONE:" + document.getElementById("grid").innerText.slice(0, 200));
+  filt.trialMeta = await page.evaluate(() => document.getElementById("rmeta").textContent);
+  await page.click('#srcBar button[data-src="pub"]'); filt.pub = await names();
+  filt.pubRef = await page.evaluate(() => (document.querySelector(".card .pub") || {}).innerText || "NONE");
+  filt.pubTx = await page.evaluate(() => [...document.querySelectorAll(".card .txName")].map((n) => n.textContent).join(","));
+  filt.dbRowsPub = await page.evaluate(() => document.querySelectorAll("#dbRows tr").length);
+  await page.click('#srcBar button[data-src="all"]'); filt.backToAll = await names();
+  await page.click(".card .copyBtn"); await page.waitForTimeout(50);
+  filt.copied = await page.evaluate(() => window.__copied); filt.copyLabel = await page.evaluate(() => document.querySelector(".card .copyBtn").textContent);
   const dbCites = await page.evaluate(() => [...document.querySelectorAll("#dbRows tr")].map((tr) => tr.children[1].textContent.trim() + "=" + tr.children[2].textContent.trim()));
   const citeStep = await page.evaluate(() => document.getElementById("s-cite").className + " " + document.getElementById("s-cite").textContent);
   const out = await page.evaluate(() => ({
@@ -122,7 +135,7 @@ async function run(browser, { failPubMed = false, failRor = false, failOpenAlex 
     links: [...document.querySelectorAll(".card a")].map((a) => a.textContent + " " + a.href),
   }));
   await page.close();
-  return { ...out, errors, orders, dbCites, citeStep, oaCalls };
+  return { ...out, errors, filt, orders, dbCites, citeStep, oaCalls };
 }
 
 async function suggestionsTest(browser) {
@@ -224,6 +237,15 @@ try {
   check(r.dbCites.some((x) => /Aranow.*=9,000$/.test(x)) && r.dbCites.some((x) => /Nadal=Not listed/.test(x)), "database table has a citations column");
   check(/done/.test(r.citeStep) && /4 matched/.test(r.citeStep), `citation step reports matches (${r.citeStep.trim()})`);
   check(r.oaCalls.length <= 4, `OpenAlex calls kept small (${r.oaCalls.length})`);
+
+  // Source filter and copy summary
+  check(r.filt.all === "Aranow,Bianchi,Das,Rossi" && r.filt.counts === "4/3/1", `"All" shows everyone; counts per filter (${r.filt.counts})`);
+  check(r.filt.trial === "Aranow" && /trial/i.test(r.filt.trialRef) && /NCT06987565/.test(r.filt.trialRef), "Trials filter keeps only trial investigators and shows their trial");
+  check(r.filt.pub === "Bianchi,Das,Rossi" && /PMID/.test(r.filt.pubRef) && !/Vagus/i.test(r.filt.pubTx), "Publications filter keeps only authors, shows publication and publication-named medicines");
+  check(/hidden by the filter/.test(r.filt.trialMeta) && r.filt.dbRowsPub === 5, "header counts filtered-out researchers; database table still lists everyone");
+  check(r.filt.backToAll === r.filt.all, "back to All restores the list");
+  check(/A researcher to ask my doctor about/.test(r.filt.copied) && /Not medical advice|not a recommendation|Not a recommendation/i.test(r.filt.copied) && /\n/.test(r.filt.copied) && !/<i>/.test(r.filt.copied), "Copy summary puts a plain-text summary on the clipboard");
+  check(/Total citations: /.test(r.filt.copied) && r.filt.copyLabel === "Copied", `summary includes citations; button confirms (${r.filt.copyLabel})`);
 
   // Suggestions dropdown
   const sg = await suggestionsTest(browser);
