@@ -35,20 +35,20 @@ try {
   check(foot.credit, "Struvante credit on its own line below");
 
   await page.fill("#q", "lupus"); await page.click("#go");
-  await page.waitForSelector(".card .abs", { timeout: 15000 });
-  const c = await page.evaluate(() => { const card = document.querySelector(".card"); const abs = card.querySelector(".abs"); const lab = card.querySelector(".pub .label");
+  await page.waitForSelector("#detail .abs", { timeout: 15000 });
+  const c = await page.evaluate(() => { const card = document.querySelector("#detail"); const abs = card.querySelector(".abs"); const lab = card.querySelector(".pub .label");
     return { abs: abs.textContent, href: abs.querySelector("a").href, above: abs.compareDocumentPosition(lab) & Node.DOCUMENT_POSITION_FOLLOWING, tips: [...card.querySelectorAll(".tip")].map((t) => t.textContent) }; });
   check(/Steroids helped kidney outcomes in this example\. Flares were less frequent\./.test(c.abs) && !/Background sentence/.test(c.abs), "abstract summary uses the conclusions");
   check(c.href === "https://pubmed.ncbi.nlm.nih.gov/111/", "link to the full abstract on PubMed");
   check(!!c.above, "summary sits above the most recent publication");
   check(c.tips.length >= 1 && c.tips.some((t) => /Total citations/.test(t) && /how many times other researchers/.test(t)), "total citations has a hover explanation");
-  const vis = async () => page.evaluate(() => getComputedStyle(document.querySelector(".card .tip .tipBox")).visibility);
-  await page.hover(".card .tip");
+  const vis = async () => page.evaluate(() => getComputedStyle(document.querySelector("#detail .tip .tipBox")).visibility);
+  await page.hover("#detail .tip");
   check((await vis()) === "visible", "explanation shows on hover");
   await page.mouse.move(5, 5);
   check((await vis()) === "hidden", "explanation hides again");
 
-  await page.click(".card .mlaLink");
+  await page.click("#detail .mlaLink");
   await page.waitForSelector("#mlaDlg li", { timeout: 8000 });
   const m = await page.evaluate(() => ({ items: [...document.querySelectorAll("#mlaDlg li")].map((l) => l.textContent), title: document.getElementById("mlaTitle").textContent, count: document.getElementById("mlaCount").textContent }));
   check(m.items.length === 3 && /^Das, Undurti N\. "First example paper\./.test(m.items[0]), "MLA list of the researcher's papers, newest first");

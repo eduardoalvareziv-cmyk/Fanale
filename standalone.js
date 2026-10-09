@@ -100,36 +100,36 @@
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
   const fmtN = (n) => { try { return new Intl.NumberFormat(I.getLang()).format(n); } catch { return String(n); } };
   const tip = (label, key) => `<span class="tip" tabindex="0" title="${esc(tr(key))}">${label}<span class="tipBox" role="tooltip">${esc(tr(key))}</span></span>`;
-  // Header line: h-index, works and the OpenAlex profile link. The citation total itself sits in the contact block.
-  function citeLine(r) {
-    if (r.citations == null) return "";
-    const parts = [];
-    if (r.hIndex != null) parts.push(tip(esc(tr("hIndex", { h: fmtN(r.hIndex) })) + " ⓘ", "tipH"));
-    if (r.works != null) parts.push(tip(esc(tr("worksN", { n: fmtN(r.works) })) + " ⓘ", "tipWorks"));
-    const link = r.oaUrl ? `<a href="${esc(r.oaUrl)}" target="_blank" rel="noopener">OpenAlex</a>` : "";
-    const all = parts.concat(link ? [link] : []);
-    return all.length ? `<div class="cites">${all.join(" · ")}</div>` : "";
-  }
   function totalCitesHtml(r) {
     if (r.citePending) return `<span class="pending">${esc(tr("citePending"))}</span>`;
     if (r.citations == null) return r.example ? naHtml() : `<span class="na">${esc(tr("citeNotFound"))}</span>`;
     return `<b class="totalCites">${esc(fmtN(r.citations))}</b>`;
   }
-  function card(r, i) {
-    const it = itemOf(r) || itemsOf(r)[0];
+  // ---------- Cards: a compact list entry plus a full detail (shown in the side panel on desktop, inside the card on phones and in print) ----------
+  function bentoHtml(r) {
+    const oa = r.oaUrl ? `<div class="oaRow"><a href="${esc(r.oaUrl)}" target="_blank" rel="noopener">OpenAlex</a></div>` : "";
+    if (r.citations == null) return `<div class="bento one"><div class="tile cit"><div class="tLbl">${tip(esc(tr("totalCites")) + " ⓘ", "tipCites")}</div><div class="tVal">${totalCitesHtml(r)}</div></div></div>`;
+    const tiles = [`<div class="tile cit"><div class="tLbl">${tip(esc(tr("totalCites")) + " ⓘ", "tipCites")}</div><div class="tVal">${totalCitesHtml(r)}</div></div>`];
+    if (r.hIndex != null) tiles.push(`<div class="tile"><div class="tLbl">${tip(esc(tr("tileH")) + " ⓘ", "tipH")}</div><div class="tVal">${esc(fmtN(r.hIndex))}</div></div>`);
+    if (r.works != null) tiles.push(`<div class="tile"><div class="tLbl">${tip(esc(tr("tileWorks")) + " ⓘ", "tipWorks")}</div><div class="tVal">${esc(fmtN(r.works))}</div></div>`);
+    return `<div class="bento">${tiles.join("")}</div>${oa}`;
+  }
+  function metersHtml(r, it, m) {
+    const cw = r.citations == null ? 0 : Math.round(8 + (m ? m.cit : 0) * 92), rw = Math.round(8 + (m ? m.rec : 0) * 92);
+    return `<div class="meters"><div class="meter"><span class="mLbl">${r.citations == null ? "&nbsp;" : esc(tr("citedTimes", { n: fmtN(r.citations) }))}</span><span class="bar" aria-hidden="true"><i style="width:${cw}%"></i></span></div>
+      <div class="meter"><span class="mLbl">${esc(it.date || "")}</span><span class="bar rec" aria-hidden="true"><i style="width:${rw}%"></i></span></div></div>`;
+  }
+  function detailHtml(r, it) {
     const ids = (it.ids || []).map(idLink).join("");
     const missingOrg = r.organization && !(has(r.organizationPhone) && has(r.organizationEmail)) && !r.example && !r.orgPending;
     const orgSrc = r.orgSource ? `<div class="src">${esc(r.orgSource.kind === "trial" ? tr("orgFromTrial", { nct: r.orgSource.nct }) : tr("orgFromWikidata", { name: r.orgSource.name }))}</div>` : "";
     const site = r.website ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">${esc(hostOf(r.website))}</a>` : (r.orgPending ? `<span class="pending">${esc(tr("lookingUp"))}</span>` : naHtml());
     const findOrg = missingOrg ? `<div class="src"><a href="${esc(google(`${r.organization} contact phone email`))}" target="_blank" rel="noopener">${esc(tr("findOrg"))}</a> ${esc(tr("opensSearch"))}</div>` : "";
-    return `<article class="card">
-      <div class="cardHead"><span class="rank">${i + 1}</span><div style="min-width:0">
-        <h3 class="name">${esc(fullName(r)) || esc(tr("unnamed"))}</h3>
-        <div class="occ">${r.occupation ? esc(r.occupation) : naHtml()}</div>
-        ${citeLine(r)}</div></div>
+    return `<div class="detailOnly">
+      ${bentoHtml(r)}
       <div class="block"><div class="label">${esc(tr("researcherContact"))}</div>
         <div class="who"><div class="avatar" aria-hidden="true">${esc(initials(r))}</div><div class="whoText">${profileLine(r)}</div></div>
-        <dl><dt>${esc(tr("phone"))}</dt><dd>${val(r.phone)}</dd><dt>${esc(tr("email"))}</dt><dd>${val(r.email)}</dd><dt>${tip(esc(tr("totalCites")) + " ⓘ", "tipCites")}</dt><dd>${totalCitesHtml(r)}</dd></dl></div>
+        <dl><dt>${esc(tr("phone"))}</dt><dd>${val(r.phone)}</dd><dt>${esc(tr("email"))}</dt><dd>${val(r.email)}</dd></dl></div>
       <div class="block"><div class="label">${esc(tr("workOrg"))}</div>
         <div class="org">${val(r.organization)}${r.country ? `<span class="country">${esc(r.country)}</span>` : ""}</div>${r.rorName ? `<div class="src">${esc(tr("matchedRor", { name: r.rorName }))}</div>` : ""}
         <dl><dt>${esc(tr("address"))}</dt><dd>${val(r.organizationAddress)}</dd><dt>${esc(tr("phone"))}</dt><dd>${orgContact(r, "organizationPhone")}</dd><dt>${esc(tr("email"))}</dt><dd>${orgContact(r, "organizationEmail")}</dd><dt>${esc(tr("website"))}</dt><dd>${site}</dd></dl>
@@ -141,7 +141,28 @@
         ${ids ? `<div class="ids">${ids}</div>` : ""}
         ${r.example ? "" : `<button type="button" class="mlaLink" data-uid="${esc(r.uid)}">${esc(tr("mlaAll"))} ↗</button>`}</div>
       <div class="cardTools"><button type="button" class="copyBtn" data-uid="${esc(r.uid)}">${esc(tr("copySummary"))}</button></div>
-    </article>`;
+    </div>`;
+  }
+  const headHtml = (r, it, i) => `<div class="cardHead">${i != null ? `<span class="rank">${i + 1}</span>` : ""}<div class="hAvatar" aria-hidden="true">${esc(initials(r))}</div>
+      <div class="headText"><h3 class="name">${esc(fullName(r)) || esc(tr("unnamed"))}</h3>
+        <div class="occ">${r.occupation ? esc(r.occupation) : naHtml()}</div>
+        <div class="orgLine">${[r.organization, r.country].filter(has).map(esc).join(" · ")}</div></div>
+      <span class="kindTag${it.trialDate ? " trial" : ""}">${esc(tr(it.trialDate ? "kindTrial" : "kindPub"))}</span></div>`;
+  function card(r, i, m) {
+    const it = itemOf(r) || itemsOf(r)[0];
+    return `<article class="card" data-uid="${esc(r.uid)}" tabindex="0" aria-pressed="false">${headHtml(r, it, i)}${metersHtml(r, it, m)}${detailHtml(r, it)}</article>`;
+  }
+  const panelHtml = (r) => { const it = itemOf(r) || itemsOf(r)[0]; return `<div class="panelHead">${headHtml(r, it, null).replace(/^<div class="cardHead">/, "").replace(/<\/div>$/, "")}</div>${detailHtml(r, it)}`; };
+  let selUid = null;
+  function syncSel() {
+    const cards = [...document.querySelectorAll("#grid .card[data-uid]")];
+    const cur = cards.find((c) => c.dataset.uid === String(selUid)) || cards[0];
+    cards.forEach((c) => { c.classList.toggle("sel", c === cur); c.setAttribute("aria-pressed", String(c === cur)); });
+    const det = $("detail");
+    if (!cur) { det.innerHTML = ""; det.hidden = true; return; }
+    selUid = cur.dataset.uid;
+    const r = lastList.find((x) => String(x.uid) === selUid);
+    det.innerHTML = r ? panelHtml(r) : ""; det.hidden = !r;
   }
 
   // Shown only with at least one real contact: a phone or email for the researcher or their organization.
@@ -183,13 +204,17 @@
     lastList = list;
     list.forEach((r, i) => { if (r.uid == null) r.uid = i; });
     let html = "";
-    for (const { c, people } of groupShown(list)) {
+    const groups = groupShown(list), flat = groups.flatMap((g) => g.people);
+    const recP = percentiles(flat.map((r) => dateKey(dateOf(r)))), citP = percentiles(flat.map((r) => r.citations ?? -1));
+    const mOf = new Map(flat.map((r, k) => [r, { rec: recP[k], cit: citP[k] }]));
+    for (const { c, people } of groups) {
       const cName = c ? tr(c) : tr("locNotListed");
       html += `<section class="cont" aria-label="${esc(cName)}">
         <h3 class="contHead">${esc(cName)}<span class="contN">${esc(I.plural(people.length, "researcher1", "researcherN"))}</span></h3>
-        <div class="grid">${people.map((r, j) => card(r, j)).join("")}</div></section>`;
+        <div class="grid">${people.map((r, j) => card(r, j, mOf.get(r))).join("")}</div></section>`;
     }
     $("grid").innerHTML = html;
+    syncSel();
     if (metaFn) setHead(metaFn);
     $("dbCount").textContent = "· " + I.plural(list.length, "record1", "recordN");
     document.querySelectorAll("#sortBar button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.sort === sortMode)));
@@ -723,12 +748,25 @@
       document.body.appendChild(ta); ta.select(); const ok = document.execCommand("copy"); ta.remove(); return ok;
     } catch { return false; }
   }
-  $("grid").addEventListener("click", async (e) => {
+  document.addEventListener("click", async (e) => {
     const b = e.target.closest && e.target.closest("button.copyBtn"); if (!b) return;
     const r = lastList.find((x) => String(x.uid) === b.dataset.uid); if (!r) return;
     const ok = await copyText(summaryText(r));
     b.textContent = tr(ok ? "copied" : "copyFailed"); b.classList.toggle("done", ok);
     setTimeout(() => { if (b.isConnected) { b.textContent = tr("copySummary"); b.classList.remove("done"); } }, 2000);
+  });
+  // Selecting a researcher fills the side panel (desktop); Enter or Space works too.
+  $("grid").addEventListener("click", (e) => {
+    if (e.target.closest("button,a,.tip")) return;
+    const c = e.target.closest(".card[data-uid]"); if (c) { selUid = c.dataset.uid; syncSel(); }
+  });
+  $("grid").addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.classList && e.target.classList.contains("card")) { e.preventDefault(); selUid = e.target.dataset.uid; syncSel(); }
+  });
+  $("mobPrint").addEventListener("click", () => window.print());
+  $("copyAll").addEventListener("click", async (e) => {
+    const b = e.currentTarget, ok = await copyText(groupShown(lastList).flatMap((g) => g.people).map(summaryText).join("\n\n---\n\n"));
+    b.textContent = tr(ok ? "copied" : "copyFailed"); setTimeout(() => { b.textContent = tr("copyAllDoctor"); }, 2000);
   });
   // ---------- All papers by one researcher, in MLA ----------
   const mlaDlg = $("mlaDlg");
@@ -758,7 +796,7 @@
     $("mlaCount").textContent = mlaLines.length ? tr("mlaCount", { n: mlaLines.length }) : "";
     $("mlaBody").innerHTML = mlaLines.length ? `<ol>${mlaLines.map((l) => `<li>${safeMLA(l)}</li>`).join("")}</ol>` : `<p class="hint">${esc(tr("mlaNone"))}</p>`;
   }
-  $("grid").addEventListener("click", (e) => {
+  document.addEventListener("click", (e) => {
     const b = e.target.closest && e.target.closest("button.mlaLink"); if (!b) return;
     const r = lastList.find((x) => String(x.uid) === b.dataset.uid); if (r) openMla(r);
   });

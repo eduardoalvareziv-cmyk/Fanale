@@ -78,7 +78,7 @@ const OA_SEARCH_ARANOW = { results: [
   { id: "https://openalex.org/A8", display_name: "C. Aranow", cited_by_count: 3, works_count: 1, summary_stats: { h_index: 1 }, last_known_institutions: [{ display_name: "Unrelated College" }] }] };
 
 async function run(browser, { failPubMed = false, failRor = false, failOpenAlex = false } = {}) {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 1600 } });
+  const page = await browser.newPage({ viewport: { width: 900, height: 1600 } });
   await page.addInitScript(() => { window.__copied = null; Object.defineProperty(navigator, "clipboard", { value: { writeText: async (s) => { window.__copied = s; } }, configurable: true }); });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -140,7 +140,7 @@ async function run(browser, { failPubMed = false, failRor = false, failOpenAlex 
 
 async function suggestionsTest(browser) {
   const res = {};
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 900, height: 900 } });
   const errs = []; page.on("pageerror", (e) => errs.push(e.message));
   let down = false; const esearchTerms = [];
   const cors = { "Access-Control-Allow-Origin": "*" };
@@ -227,7 +227,7 @@ try {
   check(/PubMed<\/b>|PubMed could not be reached/.test(f.notice) || /PubMed could not be reached/.test(f.notice), "clear message when PubMed is unreachable");
   check(f.sections.flatMap((s) => s.cards).some((c) => /Cynthia Aranow/.test(c)), "ClinicalTrials.gov results still shown when PubMed fails");
   // Citation ranking (OpenAlex)
-  check(/Total citations[^0-9]*500/.test(card("Das")) && /h-index 12/.test(card("Das")) && /40 works/.test(card("Das")), "citation count, h-index and works from OpenAlex (via PubMed paper)");
+  check(/Total citations[^0-9]*500/.test(card("Das")) && /h-index[^0-9]*12/.test(card("Das")) && /Works[^0-9]*40/.test(card("Das")), "citation count, h-index and works from OpenAlex (via PubMed paper)");
   check(/Total citations[^0-9]*9,000/.test(card("Aranow")), "trial-only investigator matched by name and institution");
   check(/Total citations[^0-9]*5,000/.test(card("Bianchi")) && /Total citations[^0-9]*300/.test(card("Maria Rossi")), "co-authors of one paper matched separately");
   check(r.orders.top === "Das>Aranow | Bianchi>Rossi", `default blends recency and citations (${r.orders.top})`);
