@@ -11,7 +11,7 @@
     en: {
       langLabel: "Language",
       tagline: "Rare-disease specialist search · PubMed + ClinicalTrials.gov",
-      h1: "Find the researchers who know this condition best.",
+      h1: "Let us find the researchers that know this condition best.",
       lede: "Enter a medical diagnosis. Fanale searches PubMed and ClinicalTrials.gov, and ranks them by most recent publication.",
       diagLabel: "Medical diagnosis",
       placeholder: "e.g. systemic lupus erythematosus",
@@ -22,7 +22,8 @@
       researchers: "Researchers",
       dbSummary: "Temporary researcher database",
       thRecent: "Most recent", thResearcher: "Researcher", thOrg: "Organization", thCountry: "Country", thContinent: "Continent", thEmail: "Email", thPhone: "Phone", thTx: "Treatment and medicine", thRef: "Reference (MLA)",
-      footer1: "Fanale is not medical advice. Researcher details come from public PubMed records and ClinicalTrials.gov registrations. Verify details before reaching out. No user data is being collected, archived, or shared.",
+      footer1: "Fanale is not medical advice. Researcher details come from public PubMed records, ClinicalTrials.gov, ROR, Wikidata and OpenAlex. No user data is collected, archived, or shared.",
+      absHead: "Abstract in brief", readAbs: "Read the full abstract on PubMed", readTrial: "Read the full record on ClinicalTrials.gov", mlaAll: "See all research papers in MLA format", mlaTitle: "Research papers by {name}", mlaNote: "Found on PubMed by author name, newest first. Common names can include other researchers, so check before relying on this list.", mlaLoading: "Loading papers…", mlaNone: "No papers found.", mlaCopyAll: "Copy all", mlaPrint: "Print", mlaClose: "Close", mlaCount: "{n} references", tipH: "h-index: a researcher has an h-index of h if h of their papers have each been cited at least h times. It reflects both how much they publish and how often it is cited.", tipWorks: "Works: the total number of papers, reviews and other research outputs credited to this researcher. A higher number means a longer or more active publishing record, not necessarily better care.", tipCites: "Total citations: how many times other researchers have referenced this person's published work. More citations suggest the work has been widely read and used, but they do not measure quality of care.",
       footer2: "The database is temporary: it lives only in this page while it is open and is not saved.",
       credit: "Fanale was created by <b>Struvante</b> · Puerto Rico · © 2026",
 
@@ -68,7 +69,7 @@
     es: {
       langLabel: "Idioma",
       tagline: "Búsqueda de especialistas en enfermedades raras · PubMed + ClinicalTrials.gov",
-      h1: "Encuentra a los investigadores que más saben de esta condición.",
+      h1: "Encontremos a los investigadores que mejor conocen esta condición.",
       lede: "Escribe un diagnóstico médico. Fanale busca en PubMed y ClinicalTrials.gov, y ordena a los investigadores por su publicación más reciente.",
       diagLabel: "Diagnóstico médico",
       placeholder: "p. ej., systemic lupus erythematosus",
@@ -79,7 +80,8 @@
       researchers: "Investigadores",
       dbSummary: "Base de datos temporal de investigadores",
       thRecent: "Más reciente", thResearcher: "Investigador", thOrg: "Organización", thCountry: "País", thContinent: "Continente", thEmail: "Correo", thPhone: "Teléfono", thTx: "Tratamiento y medicamento", thRef: "Referencia (MLA)",
-      footer1: "Fanale no es consejo médico. Los datos de los investigadores provienen de registros públicos de PubMed y de inscripciones en ClinicalTrials.gov. Verifica los datos antes de comunicarte. No se recopilan, archivan ni comparten datos de usuarios.",
+      footer1: "Fanale no es consejo médico. Los datos de los investigadores provienen de registros públicos de PubMed, ClinicalTrials.gov, ROR, Wikidata y OpenAlex. No se recopilan, archivan ni comparten datos del usuario.",
+      absHead: "Resumen del artículo", readAbs: "Leer el resumen completo en PubMed", readTrial: "Leer el registro completo en ClinicalTrials.gov", mlaAll: "Ver todos los artículos en formato MLA", mlaTitle: "Artículos de {name}", mlaNote: "Encontrados en PubMed por nombre de autor, del más reciente al más antiguo. Los nombres comunes pueden incluir a otros investigadores; verifica antes de confiar en esta lista.", mlaLoading: "Cargando artículos…", mlaNone: "No se encontraron artículos.", mlaCopyAll: "Copiar todo", mlaPrint: "Imprimir", mlaClose: "Cerrar", mlaCount: "{n} referencias", tipH: "Índice h: un investigador tiene índice h igual a h si h de sus artículos han sido citados al menos h veces cada uno. Refleja cuánto publica y cuánto se le cita.", tipWorks: "Obras: el número total de artículos, revisiones y otros trabajos atribuidos a este investigador. Un número mayor indica una trayectoria de publicación más larga o activa, no necesariamente mejor atención.", tipCites: "Citas totales: cuántas veces otros investigadores han citado la obra publicada de esta persona. Más citas sugieren que su trabajo ha sido muy leído y usado, pero no miden la calidad de la atención.",
       footer2: "La base de datos es temporal: solo existe en esta página mientras está abierta y no se guarda.",
       credit: "Fanale fue creado por <b>Struvante</b> · Puerto Rico · © 2026",
 
@@ -125,7 +127,7 @@
     fr: {
       langLabel: "Langue",
       tagline: "Recherche de spécialistes des maladies rares · PubMed + ClinicalTrials.gov",
-      h1: "Trouvez les chercheurs qui connaissent le mieux cette maladie.",
+      h1: "Trouvons les chercheurs qui connaissent le mieux cette maladie.",
       lede: "Saisissez un diagnostic médical. Fanale interroge PubMed et ClinicalTrials.gov, puis classe les chercheurs par publication la plus récente.",
       diagLabel: "Diagnostic médical",
       placeholder: "ex. : systemic lupus erythematosus",
@@ -136,7 +138,8 @@
       researchers: "Chercheurs",
       dbSummary: "Base de données temporaire des chercheurs",
       thRecent: "Plus récent", thResearcher: "Chercheur", thOrg: "Organisation", thCountry: "Pays", thContinent: "Continent", thEmail: "Courriel", thPhone: "Téléphone", thTx: "Traitement et médicament", thRef: "Référence (MLA)",
-      footer1: "Fanale ne constitue pas un avis médical. Les informations sur les chercheurs proviennent des notices publiques de PubMed et des enregistrements de ClinicalTrials.gov. Vérifiez-les avant toute prise de contact. Aucune donnée utilisateur n'est collectée, archivée ou partagée.",
+      footer1: "Fanale ne constitue pas un avis médical. Les informations sur les chercheurs proviennent des notices publiques de PubMed, de ClinicalTrials.gov, de ROR, de Wikidata et d'OpenAlex. Aucune donnée d'utilisateur n'est collectée, archivée ni partagée.",
+      absHead: "Résumé en bref", readAbs: "Lire le résumé complet sur PubMed", readTrial: "Lire la fiche complète sur ClinicalTrials.gov", mlaAll: "Voir tous les articles au format MLA", mlaTitle: "Articles de {name}", mlaNote: "Trouvés sur PubMed par nom d'auteur, du plus récent au plus ancien. Les noms courants peuvent inclure d'autres chercheurs ; vérifiez avant de vous fier à cette liste.", mlaLoading: "Chargement des articles…", mlaNone: "Aucun article trouvé.", mlaCopyAll: "Tout copier", mlaPrint: "Imprimer", mlaClose: "Fermer", mlaCount: "{n} références", tipH: "Indice h : un chercheur a un indice h égal à h si h de ses articles ont chacun été cités au moins h fois. Il reflète à la fois le volume de publications et leur nombre de citations.", tipWorks: "Travaux : nombre total d'articles, revues et autres productions attribués à ce chercheur. Un nombre élevé indique un parcours de publication plus long ou plus actif, pas forcément de meilleurs soins.", tipCites: "Citations totales : nombre de fois que d'autres chercheurs ont cité les travaux publiés de cette personne. Plus de citations suggèrent des travaux très lus et utilisés, mais ne mesurent pas la qualité des soins.",
       footer2: "La base de données est temporaire : elle n'existe que dans cette page tant qu'elle est ouverte et n'est pas enregistrée.",
       credit: "Fanale a été créé par <b>Struvante</b> · Porto Rico · © 2026",
 
@@ -182,7 +185,7 @@
     pt: {
       langLabel: "Idioma",
       tagline: "Busca de especialistas em doenças raras · PubMed + ClinicalTrials.gov",
-      h1: "Encontre os pesquisadores que mais conhecem esta condição.",
+      h1: "Vamos encontrar os pesquisadores que melhor conhecem esta condição.",
       lede: "Digite um diagnóstico médico. O Fanale pesquisa no PubMed e no ClinicalTrials.gov e ordena os pesquisadores pela publicação mais recente.",
       diagLabel: "Diagnóstico médico",
       placeholder: "ex.: systemic lupus erythematosus",
@@ -193,7 +196,8 @@
       researchers: "Pesquisadores",
       dbSummary: "Base de dados temporária de pesquisadores",
       thRecent: "Mais recente", thResearcher: "Pesquisador", thOrg: "Organização", thCountry: "País", thContinent: "Continente", thEmail: "E-mail", thPhone: "Telefone", thTx: "Tratamento e medicamento", thRef: "Referência (MLA)",
-      footer1: "O Fanale não é aconselhamento médico. Os dados dos pesquisadores vêm de registros públicos do PubMed e do ClinicalTrials.gov. Confirme os dados antes de entrar em contato. Nenhum dado de usuário é coletado, arquivado ou compartilhado.",
+      footer1: "O Fanale não é aconselhamento médico. Os dados dos pesquisadores vêm de registros públicos do PubMed, ClinicalTrials.gov, ROR, Wikidata e OpenAlex. Nenhum dado do usuário é coletado, arquivado ou compartilhado.",
+      absHead: "Resumo em poucas linhas", readAbs: "Ler o resumo completo no PubMed", readTrial: "Ler o registro completo no ClinicalTrials.gov", mlaAll: "Ver todos os artigos em formato MLA", mlaTitle: "Artigos de {name}", mlaNote: "Encontrados no PubMed pelo nome do autor, do mais recente ao mais antigo. Nomes comuns podem incluir outros pesquisadores; confira antes de confiar nesta lista.", mlaLoading: "Carregando artigos…", mlaNone: "Nenhum artigo encontrado.", mlaCopyAll: "Copiar tudo", mlaPrint: "Imprimir", mlaClose: "Fechar", mlaCount: "{n} referências", tipH: "Índice h: um pesquisador tem índice h igual a h se h de seus artigos foram citados pelo menos h vezes cada um. Reflete quanto ele publica e quanto é citado.", tipWorks: "Obras: o número total de artigos, revisões e outras produções atribuídas a este pesquisador. Um número maior indica uma trajetória de publicação mais longa ou ativa, não necessariamente melhor atendimento.", tipCites: "Total de citações: quantas vezes outros pesquisadores citaram a obra publicada desta pessoa. Mais citações sugerem trabalho amplamente lido e usado, mas não medem a qualidade do atendimento.",
       footer2: "A base de dados é temporária: existe apenas nesta página enquanto ela está aberta e não é salva.",
       credit: "O Fanale foi criado pela <b>Struvante</b> · Porto Rico · © 2026",
 

@@ -147,3 +147,8 @@ Created by **Struvante**, Puerto Rico.
 MIT License. Copyright (c) 2026 Struvante. See [LICENSE](LICENSE).
 
 The embedded TeX Gyre Pagella typeface is distributed under the GUST Font License; Public Sans and IBM Plex Mono are loaded from Google Fonts under the SIL Open Font License. Those fonts keep their own licenses.
+
+## Researcher card details
+- **Abstract in brief:** above the most recent publication or trial, the first sentences of the PubMed abstract (its conclusions when labeled) or the ClinicalTrials.gov brief summary, with a link to the full record. It is copied from the source, not rewritten.
+- **Hover explanations:** h-index, works and total citations each explain themselves on hover or keyboard focus.
+- **All papers in MLA:** each real researcher card opens a list of that author's PubMed papers (up to 100, newest first) in MLA, with Copy all and Print. It matches by author name, so common names can mix in other researchers; the dialog says so.

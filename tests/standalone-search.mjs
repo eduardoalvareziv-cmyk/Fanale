@@ -227,9 +227,9 @@ try {
   check(/PubMed<\/b>|PubMed could not be reached/.test(f.notice) || /PubMed could not be reached/.test(f.notice), "clear message when PubMed is unreachable");
   check(f.sections.flatMap((s) => s.cards).some((c) => /Cynthia Aranow/.test(c)), "ClinicalTrials.gov results still shown when PubMed fails");
   // Citation ranking (OpenAlex)
-  check(/Total citations\s*500/.test(card("Das")) && /h-index 12/.test(card("Das")) && /40 works/.test(card("Das")), "citation count, h-index and works from OpenAlex (via PubMed paper)");
-  check(/Total citations\s*9,000/.test(card("Aranow")), "trial-only investigator matched by name and institution");
-  check(/Total citations\s*5,000/.test(card("Bianchi")) && /Total citations\s*300/.test(card("Maria Rossi")), "co-authors of one paper matched separately");
+  check(/Total citations[^0-9]*500/.test(card("Das")) && /h-index 12/.test(card("Das")) && /40 works/.test(card("Das")), "citation count, h-index and works from OpenAlex (via PubMed paper)");
+  check(/Total citations[^0-9]*9,000/.test(card("Aranow")), "trial-only investigator matched by name and institution");
+  check(/Total citations[^0-9]*5,000/.test(card("Bianchi")) && /Total citations[^0-9]*300/.test(card("Maria Rossi")), "co-authors of one paper matched separately");
   check(r.orders.top === "Das>Aranow | Bianchi>Rossi", `default blends recency and citations (${r.orders.top})`);
   check(r.orders.cited === "Aranow>Das | Bianchi>Rossi", `"Most cited" ranks by citations only (${r.orders.cited})`);
   check(r.orders.newest.startsWith("Das>Aranow"), `"Newest" ranks by most recent publication (${r.orders.newest})`);

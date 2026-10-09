@@ -193,8 +193,29 @@ dd,.mla,.org,.name,.occ,td,.txName,.date{unicode-bidi:plaintext}
 [dir="rtl"] .arrow{display:inline-block;transform:scaleX(-1)}
 [dir="rtl"] .country{margin-left:0;margin-right:4px}
 [dir="rtl"] th,[dir="rtl"] td{text-align:right}
-footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px;max-width:80ch}
+footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px}
+@media (min-width:1200px){footer .disclaimer{white-space:nowrap;font-size:12px}}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+.tip{position:relative;cursor:help;outline:none;border-bottom:1px dotted var(--muted)}
+.tip .tipBox{visibility:hidden;opacity:0;position:absolute;left:0;bottom:calc(100% + 8px);width:240px;background:var(--ink);color:var(--bg);font-size:12.5px;font-weight:400;line-height:1.45;padding:9px 11px;border-radius:10px;box-shadow:0 10px 24px rgba(0,0,0,.22);z-index:20;transition:opacity .12s;text-align:left;white-space:normal}
+.tip:hover .tipBox,.tip:focus .tipBox{visibility:visible;opacity:1}
+.abs{background:var(--beacon-wash);border-radius:12px;padding:10px 12px;margin-bottom:10px;display:grid;gap:4px}
+.abs .absHead{font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--muted)}
+.abs p{margin:0;font-size:13.5px;line-height:1.5}
+.abs a{font-size:13px;font-weight:600}
+.mlaLink{font:inherit;font-size:13px;font-weight:600;background:none;border:0;padding:0;margin-top:8px;color:var(--beacon-ink);cursor:pointer;text-align:left}
+.mlaLink:hover{text-decoration:underline}
+#mlaDlg{border:0;border-radius:18px;padding:0;width:min(720px,92vw);max-height:86vh;box-shadow:0 30px 70px rgba(0,0,0,.3);color:var(--ink);background:var(--surface)}
+#mlaDlg::backdrop{background:rgba(16,47,39,.45)}
+#mlaDlg .mlaHead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:18px 22px 8px}
+#mlaDlg h2{margin:0;font-family:var(--f-display);font-weight:400;font-size:24px}
+#mlaDlg .mlaScroll{padding:0 22px;overflow:auto;max-height:52vh}
+#mlaDlg ol{padding-left:22px;margin:8px 0;display:grid;gap:10px;font-size:14px;line-height:1.5}
+#mlaDlg li{padding-left:6px;text-indent:0}
+#mlaDlg .mlaFoot{display:flex;gap:8px;flex-wrap:wrap;padding:14px 22px 18px}
+#mlaDlg .mlaFoot button{font:inherit;font-size:13px;font-weight:600;padding:7px 16px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer}
+@media print{body.printMla>*:not(#mlaDlg){display:none!important}body.printMla #mlaDlg{position:static;box-shadow:none;width:auto;max-height:none}body.printMla #mlaDlg .mlaScroll{max-height:none;overflow:visible}body.printMla #mlaDlg .mlaFoot,body.printMla #mlaClose{display:none}}
 </style>
 <style>[hidden]{display:none!important}body{margin:0}img{max-width:100%}</style>
 </head>
@@ -210,7 +231,7 @@ footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px;
   </header>
 
   <section class="desk" aria-labelledby="h">
-    <h1 id="h" data-i18n="h1">Find the researchers who know this condition best.</h1>
+    <h1 id="h" data-i18n="h1">Let us find the researchers that know this condition best.</h1>
     <p class="lede" data-i18n="lede">Enter a medical diagnosis. Fanale searches PubMed and ClinicalTrials.gov, and ranks them by most recent publication.</p>
     <form class="search" id="form" autocomplete="off">
       <div class="sugWrap">
@@ -270,14 +291,20 @@ footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px;
   </details>
 
   <footer>
-    <div data-i18n="footer1">Fanale is not medical advice. Researcher details come from public PubMed records and ClinicalTrials.gov registrations. Verify details before reaching out. No user data is being collected, archived, or shared.</div>
+    <div class="disclaimer" data-i18n="footer1">Fanale is not medical advice. Researcher details come from public PubMed records, ClinicalTrials.gov, ROR, Wikidata and OpenAlex. No user data is collected, archived, or shared.</div>
     <div data-i18n="footer2">The database is temporary: it lives only in this page while it is open and is not saved.</div>
     <div class="credit" data-i18n-html="credit">Fanale was created by <b>Struvante</b> · Puerto Rico · © 2026</div>
   </footer>
 </div>
 
-<script src="i18n-more.js?v=20261009c"></script>
-<script src="i18n.js?v=20261009c"></script>
-<script src="standalone.js?v=20261009c"></script>
+<dialog id="mlaDlg" aria-labelledby="mlaTitle">
+  <div class="mlaHead"><div><h2 id="mlaTitle"></h2><div class="hint" id="mlaCount"></div></div></div>
+  <div class="mlaScroll"><p class="hint" data-i18n="mlaNote">Found on PubMed by author name, newest first. Common names can include other researchers, so check before relying on this list.</p><div id="mlaBody"></div></div>
+  <div class="mlaFoot"><button type="button" id="mlaCopy" data-i18n="mlaCopyAll">Copy all</button><button type="button" id="mlaPrint" data-i18n="mlaPrint">Print</button><button type="button" id="mlaClose" data-i18n="mlaClose">Close</button></div>
+</dialog>
+
+<script src="i18n-more.js?v=20261009d"></script>
+<script src="i18n.js?v=20261009d"></script>
+<script src="standalone.js?v=20261009d"></script>
 </body>
 </html>

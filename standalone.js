@@ -42,7 +42,8 @@
     { firstName: "Sofía", lastName: "Reyes", occupation: "Pediatric Nephrologist", organization: "Example Children's Medical Center", organizationAddress: "5 Placeholder St, Houston, TX", organizationPhone: "(555) 010-4400", organizationEmail: "research@example.org", country: "United States", date: "2026-05-20", mla: 'Reyes, Sofía, et al. "Example Cohort of Childhood-Onset Lupus." <i>Example Pediatrics</i>, vol. 30, no. 2, 2026, pp. 77-84.', treatments: [["Hydroxychloroquine", "Medicine"], ["Exercise program", "Treatment"]] },
     { firstName: "Hiro", lastName: "Tanaka", email: "h.tanaka@example.org", organization: "Example Medical University", country: "Japan", date: "2026-03", mla: 'Tanaka, Hiro, et al. "Example Biomarkers for Flare Prediction." <i>Example Clinical Medicine</i>, vol. 4, 2026, p. 19.', treatments: [["Low-dose aspirin", "Medicine"]] },
     { firstName: "Laura", lastName: "Bennett", occupation: "Principal Investigator", organization: "Example Clinical Research Network", organizationAddress: "Boston, Massachusetts 02115", organizationPhone: "(555) 010-7700", country: "United States", date: "2025-12-01", trialDate: true, mla: '"Example Phase 2 Trial of a Targeted Therapy in Lupus." <i>ClinicalTrials.gov</i>, sponsored by Example Clinical Research Network, NCT00000000.', treatments: [["CAR-T cell therapy", "Treatment"]] },
-  ].map((r, i) => ({ ...r, example: true, continent: continentOf(r.country), ids: [], citations: [4210, 12890, 860, 2475, 1530][i], hIndex: [31, 58, 14, 24, 19][i], works: [96, 240, 37, 71, 52][i], treatments: r.treatments.map(([name, kind]) => ({ name, kind, src: null })) }));
+  ].map((r, i) => ({ ...r, example: true, continent: continentOf(r.country), ids: [], citations: [4210, 12890, 860, 2475, 1530][i], hIndex: [31, 58, 14, 24, 19][i], works: [96, 240, 37, 71, 52][i],
+    blurb: ["This example study followed adults with lupus nephritis for two years. Patients on the combined regimen kept kidney function better, with fewer flares.", "This example review explains how blocking type I interferon signaling may calm the immune system in lupus.", "This example cohort describes children diagnosed with lupus before age 16 and links earlier treatment to fewer hospital stays.", "This example study tracks biomarkers that may predict a lupus flare before symptoms start.", "This example phase 2 trial tests a targeted therapy in people with active lupus. Enrollment is open."][i], blurbUrl: "https://pubmed.ncbi.nlm.nih.gov/", treatments: r.treatments.map(([name, kind]) => ({ name, kind, src: null })) }));
 
   // ---------- UI helpers ----------
   let running = false, ctl = null;
@@ -76,7 +77,7 @@
   // ---------- Source filter: publications / trials ----------
   let srcFilter = "all";
   try { const m = localStorage.getItem("fanale-src"); if (m === "all" || m === "pub" || m === "trial") srcFilter = m; } catch {}
-  const itemsOf = (r) => (r.items && r.items.length ? r.items : [{ date: r.date, trialDate: r.trialDate, mla: r.mla, ids: r.ids || [] }]);
+  const itemsOf = (r) => (r.items && r.items.length ? r.items : [{ date: r.date, trialDate: r.trialDate, mla: r.mla, blurb: r.blurb, url: r.blurbUrl, ids: r.ids || [] }]);
   const itemMatches = (it, m) => m === "all" || (m === "trial") === !!it.trialDate;
   const itemOf = (r, m = srcFilter) => itemsOf(r).find((it) => itemMatches(it, m)) || null; // items are newest first
   const txOf = (r, m = srcFilter) => (r.treatments || []).filter((t) => m === "all" || !t.src || (m === "trial") === (t.src.type === "nct"));
@@ -98,12 +99,13 @@
   }
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
   const fmtN = (n) => { try { return new Intl.NumberFormat(I.getLang()).format(n); } catch { return String(n); } };
+  const tip = (label, key) => `<span class="tip" tabindex="0" title="${esc(tr(key))}">${label}<span class="tipBox" role="tooltip">${esc(tr(key))}</span></span>`;
   // Header line: h-index, works and the OpenAlex profile link. The citation total itself sits in the contact block.
   function citeLine(r) {
     if (r.citations == null) return "";
     const parts = [];
-    if (r.hIndex != null) parts.push(esc(tr("hIndex", { h: fmtN(r.hIndex) })));
-    if (r.works != null) parts.push(esc(tr("worksN", { n: fmtN(r.works) })));
+    if (r.hIndex != null) parts.push(tip(esc(tr("hIndex", { h: fmtN(r.hIndex) })) + " ⓘ", "tipH"));
+    if (r.works != null) parts.push(tip(esc(tr("worksN", { n: fmtN(r.works) })) + " ⓘ", "tipWorks"));
     const link = r.oaUrl ? `<a href="${esc(r.oaUrl)}" target="_blank" rel="noopener">OpenAlex</a>` : "";
     const all = parts.concat(link ? [link] : []);
     return all.length ? `<div class="cites">${all.join(" · ")}</div>` : "";
@@ -127,16 +129,17 @@
         ${citeLine(r)}</div></div>
       <div class="block"><div class="label">${esc(tr("researcherContact"))}</div>
         <div class="who"><div class="avatar" aria-hidden="true">${esc(initials(r))}</div><div class="whoText">${profileLine(r)}</div></div>
-        <dl><dt>${esc(tr("phone"))}</dt><dd>${val(r.phone)}</dd><dt>${esc(tr("email"))}</dt><dd>${val(r.email)}</dd><dt>${esc(tr("totalCites"))}</dt><dd>${totalCitesHtml(r)}</dd></dl></div>
+        <dl><dt>${esc(tr("phone"))}</dt><dd>${val(r.phone)}</dd><dt>${esc(tr("email"))}</dt><dd>${val(r.email)}</dd><dt>${tip(esc(tr("totalCites")) + " ⓘ", "tipCites")}</dt><dd>${totalCitesHtml(r)}</dd></dl></div>
       <div class="block"><div class="label">${esc(tr("workOrg"))}</div>
         <div class="org">${val(r.organization)}${r.country ? `<span class="country">${esc(r.country)}</span>` : ""}</div>${r.rorName ? `<div class="src">${esc(tr("matchedRor", { name: r.rorName }))}</div>` : ""}
         <dl><dt>${esc(tr("address"))}</dt><dd>${val(r.organizationAddress)}</dd><dt>${esc(tr("phone"))}</dt><dd>${orgContact(r, "organizationPhone")}</dd><dt>${esc(tr("email"))}</dt><dd>${orgContact(r, "organizationEmail")}</dd><dt>${esc(tr("website"))}</dt><dd>${site}</dd></dl>
         ${orgSrc}${findOrg}</div>
       <div class="block"><div class="label">${esc(tr("txHead"))}</div>${treatList(r)}</div>
-      <div class="block pub"><div class="label">${esc(tr(it.trialDate ? "recentTrial" : "recentPub"))}</div>
+      <div class="block pub">${it.blurb ? `<div class="abs"><div class="absHead">${esc(tr("absHead"))}</div><p>${esc(it.blurb)}</p>${it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">${esc(tr(it.trialDate ? "readTrial" : "readAbs"))} ↗</a>` : ""}</div>` : ""}<div class="label">${esc(tr(it.trialDate ? "recentTrial" : "recentPub"))}</div>
         <div class="date">${val(it.date)}</div>
         <div class="mla">${it.mla ? safeMLA(it.mla) : naHtml()}</div>
-        ${ids ? `<div class="ids">${ids}</div>` : ""}</div>
+        ${ids ? `<div class="ids">${ids}</div>` : ""}
+        ${r.example ? "" : `<button type="button" class="mlaLink" data-uid="${esc(r.uid)}">${esc(tr("mlaAll"))} ↗</button>`}</div>
       <div class="cardTools"><button type="button" class="copyBtn" data-uid="${esc(r.uid)}">${esc(tr("copySummary"))}</button></div>
     </article>`;
   }
@@ -266,6 +269,15 @@
     return { email, organization: parts[orgIdx] || null, address, country: country || null, dept };
   }
 
+  // Extractive summary: the first two sentences (or the conclusions), cut at about 320 characters.
+  function briefOf(text) {
+    const t = String(text || "").replace(/\s+/g, " ").trim();
+    if (!t) return "";
+    const sents = t.split(/(?<=[.!?])\s+(?=[A-Z0-9])/);
+    let out = "";
+    for (const x of sents) { if (out && (out + " " + x).length > 320) break; out = out ? out + " " + x : x; if (out.length >= 200) break; }
+    return out.length > 340 ? out.slice(0, 337).replace(/\s+\S*$/, "") + "…" : out;
+  }
   function parseArticle(el) {
     const t = (sel, root = el) => { const n = root.querySelector(sel); return n ? n.textContent.trim() : ""; };
     const pdEl = el.querySelector("JournalIssue > PubDate");
@@ -283,7 +295,11 @@
       const quals = [...mh.querySelectorAll("QualifierName")].map((q) => q.textContent.trim().toLowerCase());
       if (quals.includes("therapeutic use")) meds.push(t("DescriptorName", mh));
     }
+    const absEls = [...el.querySelectorAll("Abstract > AbstractText")];
+    const concl = absEls.find((x) => /^conclusion/i.test(x.getAttribute("Label") || ""));
+    const abstract = (concl ? concl.textContent : absEls.map((x) => x.textContent).join(" ")).trim();
     return {
+      abstract,
       pmid: t("MedlineCitation > PMID"), title: t("ArticleTitle"), journal: t("Journal > Title"),
       volume: t("JournalIssue > Volume"), issue: t("JournalIssue > Issue"), pages: t("Pagination > MedlinePgn"),
       pd, doi: doiEl ? doiEl.textContent.trim() : "", authors, meds: [...new Set(meds.filter(Boolean))],
@@ -300,6 +316,7 @@
       .filter((i) => i && i.name && !SKIP_IV.test(i.name) && (MED_TYPES.has(i.type) || TRT_TYPES.has(i.type)))
       .map((i) => ({ name: i.name, kind: MED_TYPES.has(i.type) ? "Medicine" : "Treatment" }));
     return {
+      summary: (p.descriptionModule || {}).briefSummary || "",
       nct: id.nctId, title: id.briefTitle || id.officialTitle, date: (st.startDateStruct || {}).date || "",
       sponsor: ((p.sponsorCollaboratorsModule || {}).leadSponsor || {}).name || "",
       ivs, officials: cl.overallOfficials || [], central: cl.centralContacts || [], locations: cl.locations || [],
@@ -334,7 +351,7 @@
     setStep("trials", "active");
     const status = "RECRUITING,NOT_YET_RECRUITING,ACTIVE_NOT_RECRUITING,ENROLLING_BY_INVITATION";
     const base = `${CTGOV}?format=json&pageSize=25&query.cond=${encodeURIComponent(q)}&filter.overallStatus=${status}`;
-    const fields = "&fields=" + encodeURIComponent(["IdentificationModule", "StatusModule", "SponsorCollaboratorsModule", "ArmsInterventionsModule", "ContactsLocationsModule"].join(","));
+    const fields = "&fields=" + encodeURIComponent(["IdentificationModule", "StatusModule", "SponsorCollaboratorsModule", "ArmsInterventionsModule", "ContactsLocationsModule", "DescriptionModule"].join(","));
     // Try the compact request first, then simpler forms if the API rejects a parameter.
     const noStatus = `${CTGOV}?format=json&pageSize=25&query.cond=${encodeURIComponent(q)}`;
     let data, lastErr;
@@ -373,7 +390,7 @@
         fill(r, "affRaw", x.affs[0]);
         fill(r, "email", aff.email); fill(r, "organization", aff.organization); fill(r, "organizationAddress", aff.address);
         fill(r, "country", aff.country); fill(r, "occupation", aff.dept);
-        r.items.push({ date: isoDate(a.pd), mla: mlaArticle(a), ids: [{ type: "pmid", id: a.pmid }, ...(a.doi ? [{ type: "doi", id: a.doi }] : [])] });
+        r.items.push({ date: isoDate(a.pd), mla: mlaArticle(a), blurb: briefOf(a.abstract), url: `https://pubmed.ncbi.nlm.nih.gov/${a.pmid}/`, ids: [{ type: "pmid", id: a.pmid }, ...(a.doi ? [{ type: "doi", id: a.doi }] : [])] });
         for (const m of a.meds) addTx(r, m, "Medicine", { type: "pmid", id: a.pmid });
       }
     }
@@ -400,7 +417,7 @@
             r.orgSource = { kind: "trial", nct: t.nct };
           }
         }
-        r.items.push({ date: t.date, trialDate: true, mla: mlaTrial(t), ids: [{ type: "nct", id: t.nct }] });
+        r.items.push({ date: t.date, trialDate: true, mla: mlaTrial(t), blurb: briefOf(t.summary), url: `https://clinicaltrials.gov/study/${t.nct}`, ids: [{ type: "nct", id: t.nct }] });
         for (const iv of t.ivs) addTx(r, iv.name, iv.kind, { type: "nct", id: t.nct });
       }
     }
@@ -706,6 +723,46 @@
     b.textContent = tr(ok ? "copied" : "copyFailed"); b.classList.toggle("done", ok);
     setTimeout(() => { if (b.isConnected) { b.textContent = tr("copySummary"); b.classList.remove("done"); } }, 2000);
   });
+  // ---------- All papers by one researcher, in MLA ----------
+  const mlaDlg = $("mlaDlg");
+  let mlaLines = [];
+  const plain = (h) => String(h).replace(/<\/?i>/g, "");
+  async function openMla(r) {
+    const name = fullName(r);
+    $("mlaTitle").textContent = tr("mlaTitle", { name });
+    $("mlaBody").innerHTML = `<p class="hint">${esc(tr("mlaLoading"))}</p>`;
+    $("mlaCount").textContent = ""; mlaLines = [];
+    if (mlaDlg.showModal) { if (!mlaDlg.open) mlaDlg.showModal(); } else mlaDlg.setAttribute("open", "");
+    let arts = [];
+    try {
+      const last = r.lastName, fore = r.firstName || "";
+      const terms = [`"${last} ${fore}"[Author]`, `${last} ${fore.charAt(0)}[Author]`].filter((x, i) => fore || i);
+      for (const term of terms) {
+        const s = await getOK(`${EUTILS}esearch.fcgi?db=pubmed&retmode=json&sort=pub_date&retmax=100&tool=fanale&term=${encodeURIComponent(term)}`, undefined, "json");
+        const ids = ((s && s.esearchresult) || {}).idlist || [];
+        if (!ids.length) continue;
+        const xml = await getOK(`${EUTILS}efetch.fcgi?db=pubmed&retmode=xml&tool=fanale&id=${ids.join(",")}`, undefined, "text");
+        arts = [...new DOMParser().parseFromString(xml, "text/xml").querySelectorAll("PubmedArticle")].map(parseArticle);
+        break;
+      }
+    } catch {}
+    mlaLines = arts.map(mlaArticle);
+    if (!mlaLines.length) mlaLines = itemsOf(r).map((x) => x.mla).filter(Boolean); // fall back to what this search found
+    $("mlaCount").textContent = mlaLines.length ? tr("mlaCount", { n: mlaLines.length }) : "";
+    $("mlaBody").innerHTML = mlaLines.length ? `<ol>${mlaLines.map((l) => `<li>${safeMLA(l)}</li>`).join("")}</ol>` : `<p class="hint">${esc(tr("mlaNone"))}</p>`;
+  }
+  $("grid").addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest("button.mlaLink"); if (!b) return;
+    const r = lastList.find((x) => String(x.uid) === b.dataset.uid); if (r) openMla(r);
+  });
+  $("mlaClose").addEventListener("click", () => mlaDlg.close ? mlaDlg.close() : mlaDlg.removeAttribute("open"));
+  mlaDlg.addEventListener("click", (e) => { if (e.target === mlaDlg && mlaDlg.close) mlaDlg.close(); });
+  $("mlaCopy").addEventListener("click", async (e) => {
+    const b = e.currentTarget, ok = await copyText(mlaLines.map(plain).join("\n\n"));
+    b.textContent = tr(ok ? "copied" : "copyFailed"); setTimeout(() => { b.textContent = tr("mlaCopyAll"); }, 2000);
+  });
+  $("mlaPrint").addEventListener("click", () => { document.body.classList.add("printMla"); window.print(); });
+  window.addEventListener("afterprint", () => document.body.classList.remove("printMla"));
   $("form").addEventListener("submit", (e) => { e.preventDefault(); sugClose(); const q = $("q").value.trim(); if (q && !running) runSearch(q); });
   $("stop").addEventListener("click", () => ctl && ctl.abort());
   document.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => { sugClose(); $("q").value = b.dataset.q; if (!running) runSearch(b.dataset.q); }));

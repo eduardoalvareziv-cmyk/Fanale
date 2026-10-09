@@ -24,12 +24,12 @@ try {
     chip: document.querySelector(".chip").textContent, chipQ: document.querySelector(".chip").dataset.q,
   }));
   let s = await snap();
-  check(s.lang === "en" && /Find the researchers/.test(s.h1) && s.hintHidden, "English is the default");
+  check(s.lang === "en" && /find the researchers/.test(s.h1) && s.hintHidden, "English is the default");
   check(s.options.join(",") === "en,es,fr,pt,de,ru,zh,hi,ja,ar,sw", "11 languages in the menu");
 
-  const expect = { es: ["Encuentra", "América del Norte", "Buscar"], fr: ["Trouvez", "Amérique du Nord", "Rechercher"], pt: ["Encontre", "América do Norte", "Pesquisar"],
-    de: ["Finden", "Nordamerika", "Suchen"], ru: ["Найдите", "Северная Америка", "Найти"], zh: ["找到", "北美洲", "搜索"], hi: ["खोजें", "उत्तरी अमेरिका", "खोजें"],
-    ja: ["見つけ", "北アメリカ", "検索"], ar: ["اعثر", "أمريكا الشمالية", "بحث"], sw: ["Pata", "Amerika Kaskazini", "Tafuta"] };
+  const expect = { es: ["Encontremos", "América del Norte", "Buscar"], fr: ["Trouvons", "Amérique du Nord", "Rechercher"], pt: ["Vamos", "América do Norte", "Pesquisar"],
+    de: ["Finden", "Nordamerika", "Suchen"], ru: ["Давайте", "Северная Америка", "Найти"], zh: ["找到", "北美洲", "搜索"], hi: ["खोजें", "उत्तरी अमेरिका", "खोजें"],
+    ja: ["探しましょう", "北アメリカ", "検索"], ar: ["لنعثر", "أمريكا الشمالية", "بحث"], sw: ["Tuwapate", "Amerika Kaskazini", "Tafuta"] };
   for (const [code, [h, c, b]] of Object.entries(expect)) {
     await page.selectOption("#lang", code);
     s = await snap();
@@ -44,7 +44,7 @@ try {
 
   await page.goto(PAGE + "?lang=ja");
   s = await snap();
-  check(s.lang === "ja" && s.h1.includes("見つけ"), "?lang=ja link opens in Japanese");
+  check(s.lang === "ja" && s.h1.includes("探しましょう"), "?lang=ja link opens in Japanese");
   check(errors.length === 0, "no script errors");
   await page.close();
 } finally {
