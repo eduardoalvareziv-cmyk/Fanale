@@ -10,7 +10,7 @@ const PAGE = pathToFileURL(path.join(here, "..", "index.html")).href;
 let failures = 0;
 const check = (ok, msg) => { console.log(`${ok ? "PASS" : "FAIL"}  ${msg}`); if (!ok) failures++; };
 
-const ESEARCH = { esearchresult: { idlist: ["42834216", "42000001"] } };
+const ESEARCH = { esearchresult: { idlist: ["42834216", "42000001", "42000002"] } };
 const EFETCH = `<?xml version="1.0"?>
 <PubmedArticleSet>
  <PubmedArticle><MedlineCitation><PMID>42834216</PMID><Article>
@@ -32,6 +32,13 @@ const EFETCH = `<?xml version="1.0"?>
   </AuthorList>
  </Article><MeshHeadingList>
   <MeshHeading><DescriptorName>Hydroxychloroquine</DescriptorName><QualifierName>therapeutic use</QualifierName></MeshHeading>
+ </MeshHeadingList></MedlineCitation></PubmedArticle>
+ <PubmedArticle><MedlineCitation><PMID>42000002</PMID><Article>
+  <Journal><JournalIssue><Volume>3</Volume><PubDate><Year>2026</Year><Month>Jan</Month></PubDate></JournalIssue><Title>Caribbean medical journal</Title></Journal>
+  <ArticleTitle>Case series from a small clinic.</ArticleTitle>
+  <AuthorList><Author><LastName>Nadal</LastName><ForeName>Rosa</ForeName><AffiliationInfo><Affiliation>Small Lab, Ponce, Puerto Rico.</Affiliation></AffiliationInfo></Author></AuthorList>
+ </Article><MeshHeadingList>
+  <MeshHeading><DescriptorName>Prednisone</DescriptorName><QualifierName>therapeutic use</QualifierName></MeshHeading>
  </MeshHeadingList></MedlineCitation></PubmedArticle>
 </PubmedArticleSet>`;
 const ROR_PADUA = { number_of_results: 2, items: [
@@ -100,7 +107,9 @@ try {
   check(r.errors.length === 0, "page runs without script errors");
   check(r.sections.map((s) => s.name).join(",") === "North America,Europe", "researchers grouped by continent (North America first)");
   check(/Undurti N Das/.test(all) && /Cynthia Aranow/.test(all) && /Maria Rossi/.test(all), "PubMed authors and trial investigator shown");
-  check(r.dbRows === 4, "all researchers kept in the database");
+  check(r.dbRows === 5, "all researchers kept in the database");
+  check(!/Rosa Nadal/.test(all), "researcher with an organization but no phone or email anywhere is hidden");
+  check(/hidden for missing contact details or treatments/.test(r.meta), "header counts the hidden researchers");
   check(/undurti@lipidworld\.com/.test(all) && !/lipidworld\.com\./.test(all), "email parsed from the PubMed affiliation");
   check(/Adrenal Cortex Hormones/.test(all) && !/Biomarkers/.test(all) && !/Lupus Erythematosus, Systemic/.test(all), "medicines come from MeSH 'therapeutic use' only");
   check(/516-562-3830/.test(all) && /caranow@northwell\.edu/.test(all), "investigator phone and email from the trial registration");
@@ -117,7 +126,9 @@ try {
 
   const g = await run(browser, { failRor: true });
   check(/organization directory \(ROR\) could not be reached/.test(g.notice), "clear message when ROR is unreachable");
-  check(g.sections.flatMap((s) => s.cards).some((c) => /Maria Rossi/.test(c)), "results still shown when ROR fails");
+  const gAll = g.sections.flatMap((s) => s.cards).join("\n");
+  check(/Undurti N Das/.test(gAll) && /Cynthia Aranow/.test(gAll), "researchers with their own contacts still shown when ROR fails");
+  check(!/Maria Rossi/.test(gAll) && g.dbRows === 5, "without ROR, a researcher with no phone or email is hidden but kept in the database");
 
   const f = await run(browser, { failPubMed: true });
   check(/PubMed<\/b>|PubMed could not be reached/.test(f.notice) || /PubMed could not be reached/.test(f.notice), "clear message when PubMed is unreachable");

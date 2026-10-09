@@ -112,8 +112,10 @@
     </article>`;
   }
 
-  const reachable = (r) => has(r.email) || has(r.phone) || has(r.organization);
-  const visible = (r) => (r.treatments || []).length > 0 && reachable(r);
+  // Shown only with at least one real contact: a phone or email for the researcher or their organization.
+  // While an organization lookup is still running, the card stays until the lookup finishes.
+  const reachable = (r) => has(r.email) || has(r.phone) || has(r.organizationPhone) || has(r.organizationEmail);
+  const visible = (r) => (r.treatments || []).length > 0 && (reachable(r) || !!r.orgPending);
   function groupShown(list) {
     const vis = list.filter(visible);
     return [...CONTINENTS, null].map((c) => ({ c, people: vis.filter((r) => (r.continent || null) === c).slice(0, PER_CONTINENT) })).filter((g) => g.people.length);

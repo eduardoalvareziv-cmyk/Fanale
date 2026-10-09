@@ -79,7 +79,7 @@ How the website version builds each card:
 - **Contacts:** emails are parsed from PubMed affiliations. Phone numbers and emails come from trial registrations. Organization contacts come from the trial site contact at the researcher's institution.
 - **Medicines:** substances PubMed's indexers tagged with the MeSH qualifier "therapeutic use", and trial interventions of type drug or biological.
 - **Treatments:** trial interventions such as procedures, devices and behavioral therapy. Placebo and sham arms are excluded.
-- **Who is shown:** researchers appear only if they have a treatment or medicine and an email, phone or known organization.
+- **Who is shown:** researchers appear only if they have a treatment or medicine and at least one real contact: a phone or email for the researcher or their organization. Everyone else stays in the temporary database table.
 - **Organization contacts:** the trial site contact comes first. The organization's general phone number and email from Wikidata are used only when that's missing, labeled with their source.
 - **Missing contacts:** where a profile or organization contact isn't in any source, the card offers a web-search link instead.
 
