@@ -5,7 +5,9 @@
   "license": "MIT",
   "description": "Fanale: find the researchers who know a rare disease best (Caribbean AI Summit Healthcare Hackathon 2026)",
   "scripts": {
-    "test": "node tests/simulated-search.mjs"
+    "test": "node tests/standalone-search.mjs && node tests/simulated-search.mjs",
+    "test:site": "node tests/standalone-search.mjs",
+    "test:claude": "node tests/simulated-search.mjs"
   },
   "devDependencies": {
     "playwright": "^1.47.0"

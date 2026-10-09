@@ -4,6 +4,19 @@
 
 Fanale is a web app that finds the researchers who know the most about a rare disease, and shows how to reach them. Built for the Caribbean AI Summit Healthcare Hackathon, Puerto Rico, October 8–10, 2026.
 
+**Try it:** https://eduardoalvareziv-cmyk.github.io/Fanale/ (no account or sign-in needed)
+
+This repository holds two versions of the same app:
+
+| | **Website version** (`index.html` + `standalone.js`) | **Claude version** (`claude/index.html`) |
+|---|---|---|
+| Runs on | Any browser, hosted free on GitHub Pages | Claude (claude.ai or the desktop app) |
+| Needs | Nothing | A Claude account plus the PubMed, Clinical Trials and Parallel Search connectors |
+| Data | PubMed and ClinicalTrials.gov, called directly from the browser | The same, through Claude connectors |
+| Researcher database | Built in code: affiliation parsing, trial registrations, MeSH "therapeutic use" indexing | Built by Claude, then verified in code |
+| Organization contacts and profiles | From trial site contacts, plus web-search links | Looked up on the web with Parallel Search |
+
+
 ## The problem, the users, the solution
 
 **Problem.** Over 300 million people live with a rare disease, and diagnosis often takes years. In Puerto Rico, an estimated 110,000–190,000 people are affected (3.5–5.9% global prevalence applied to 3.18 million residents; no official island count exists), and the most specialized care is often off-island. Families have no map to the world's leading experts.
@@ -18,7 +31,9 @@ Fanale is a web app that finds the researchers who know the most about a rare di
 - Treatments and medicines named in that researcher's own papers or trials
 - Date and MLA citation of their most recent publication, with PMID, DOI and NCT links
 
-## How it works
+## How it works (Claude version)
+
+The website version follows the same steps without Claude or Parallel Search; see "Website version" below.
 
 ```
 Diagnosis ──► PubMed (40 newest articles + metadata)        ┐
@@ -45,52 +60,63 @@ Diagnosis ──► PubMed (40 newest articles + metadata)        ┐
 
 ## Running or reviewing the project
 
-### Live app (runs inside Claude)
+### Website version (no account needed)
 
-Fanale is published as a Claude artifact. The live search runs in the viewer's browser, on the viewer's own Claude account:
+Open https://eduardoalvareziv-cmyk.github.io/Fanale/, type a diagnosis (for example *Hermansky-Pudlak syndrome* or *systemic lupus erythematosus*) and click **Search**. Results take a few seconds. The page runs entirely in the visitor's browser and calls:
+
+- **PubMed E-utilities:** `esearch` for the 40 newest articles, and `efetch` for titles, authors, affiliations and MeSH indexing.
+- **ClinicalTrials.gov API v2:** active trials, with officials, contacts, sites and interventions.
+
+How the website version builds each card:
+
+- **Researchers:** the first and last author of each article, plus each trial's overall officials, merged by name.
+- **Contacts:** emails are parsed from PubMed affiliations. Phone numbers and emails come from trial registrations. Organization contacts come from the trial site contact at the researcher's institution.
+- **Medicines:** substances PubMed's indexers tagged with the MeSH qualifier "therapeutic use", and trial interventions of type drug or biological.
+- **Treatments:** trial interventions such as procedures, devices and behavioral therapy. Placebo and sham arms are excluded.
+- **Who is shown:** researchers appear only if they have a treatment or medicine and an email, phone or known organization.
+- **Missing contacts:** where a profile or organization contact isn't in the data, the card offers a web-search link instead.
+
+To run it locally, serve the folder with any static server (`npx serve .`) and open the printed address.
+
+### Claude version (runs inside Claude)
+
+`claude/index.html` is the version published as a Claude artifact. It adds a Claude-built researcher database, Parallel Search lookups of organization contacts and profile pages, and verification of every model output against the source data.
 
 1. Open the published Fanale artifact in claude.ai or the Claude desktop app.
 2. Add these connectors in Settings → Connectors (none needs a login): **PubMed**, **Clinical Trials**, **Parallel Search**.
-3. Search a diagnosis, for example *Hermansky-Pudlak syndrome* or *systemic lupus erythematosus*. Allow the page to use the connectors and Claude when asked. A search takes about 30–90 seconds.
+3. Search a diagnosis and allow the page to use the connectors and Claude when asked. A search takes about 30–90 seconds.
 
-No server or computer needs to be running. The page uses the artifact runtime's `mcp` (connectors) and `sample` (Claude) capabilities.
+### Tests
 
-### Review the code and layout locally
-
-`index.html` is the complete app in one file: markup, styles and script.
-
-- **Open it in any browser** to see the layout with fictional example researchers. Live search needs the Claude runtime, so outside Claude the page explains that instead of searching.
-- **Run the simulated end-to-end test**, which replays recorded PubMed and ClinicalTrials.gov responses through the full pipeline and checks the verification rules:
+Both versions have simulated end-to-end tests. They replay recorded-format PubMed and ClinicalTrials.gov responses through the real page code and check the data rules: parsing, verification, filtering, the continent grouping and the 10-per-continent limit.
 
 ```bash
 npm install
 npx playwright install chromium
-npm test
+npm test              # both versions
+npm run test:site     # website version only
+npm run test:claude   # Claude version only
 ```
-
-The test confirms that:
-- Invented researchers, contacts, profile links and treatments are rejected.
-- A busy web search retries.
-- Researchers without contact details or treatments are hidden from the grid but kept in the database.
-- The 10-per-continent limit holds.
 
 ## Data, privacy and limitations
 
 - **Data:** only public sources are used (PubMed, ClinicalTrials.gov and public web pages). No patient data, no confidential information, and no credentials are in this repository or the app.
-- **No user data is collected, archived, or shared by Fanale.** The researcher database lives only in the open page and is discarded when it closes. The diagnosis a user types is sent to PubMed, ClinicalTrials.gov, Parallel Search and Claude to run the search.
+- **No user data is collected, archived, or shared by Fanale.** The researcher database lives only in the open page and is discarded when it closes. In the website version, the diagnosis a user types is sent only to PubMed and ClinicalTrials.gov. In the Claude version it also goes to Parallel Search and Claude.
 - **Not medical advice.** Treatments shown are those named in the research, not recommendations.
 - **Limitations:**
   - Researchers' personal phone numbers are rarely published, so most contacts come from the researcher's organization.
-  - The Clinical Trials connector lists trial contacts by name only.
+  - Claude version: the Clinical Trials connector lists trial contacts by name only. The website version reads phone numbers and emails straight from the ClinicalTrials.gov API.
+  - Website version: medicines depend on PubMed's MeSH indexing, which can lag new articles by weeks, so the newest papers may show none yet.
   - Profile links come from web search and should be confirmed as the same person.
   - The page cannot display photos hosted on other sites, so it links to the profile page instead.
-  - Parallel Search's free tier is rate-limited; the page offers a "Retry web lookup" button.
+  - Claude version: Parallel Search's free tier is rate-limited; the page offers a "Retry web lookup" button.
   - Results reflect the newest 40 PubMed articles and active trials, not every expert in the field.
 
 ## Built with
 
-- Claude artifact runtime: connectors (`mcp`) and Claude (`sample`)
-- PubMed, Clinical Trials (ClinicalTrials.gov API v2) and Parallel Search connectors
+- Website version: NCBI E-utilities and the ClinicalTrials.gov API v2, hosted on GitHub Pages
+- Claude version: Claude artifact runtime, connectors (`mcp`) and Claude (`sample`)
+- Claude version connectors: PubMed, Clinical Trials and Parallel Search
 - Vanilla HTML, CSS and JavaScript; no build step
 - Typefaces: TeX Gyre Pagella (GUST Font License, embedded), Public Sans and IBM Plex Mono (Google Fonts, SIL Open Font License)
 

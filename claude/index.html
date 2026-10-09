@@ -1,9 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Fanale finds the researchers who know a rare disease best, from PubMed and ClinicalTrials.gov. Created by Struvante, Puerto Rico.">
 <title>Fanale Specialist Search</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -141,9 +136,6 @@ td.date{white-space:nowrap}
 footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px;max-width:80ch}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
-<style>[hidden]{display:none!important}body{margin:0}img{max-width:100%}</style>
-</head>
-<body>
 
 <div class="wrap">
   <header class="top">
@@ -180,6 +172,8 @@ footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px;
     <div class="step" id="s-trials"><span class="dot"></span>Search ClinicalTrials.gov <span class="n" id="n-trials"></span></div>
     <span class="arrow" aria-hidden="true">→</span>
     <div class="step" id="s-db"><span class="dot"></span>Build researcher database <span class="n" id="n-db"></span></div>
+    <span class="arrow" aria-hidden="true">→</span>
+    <div class="step" id="s-web"><span class="dot"></span>Look up organizations on the web <span class="n" id="n-web"></span></div>
   </div>
 
   <div id="notice"></div>
@@ -207,6 +201,560 @@ footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px;
   </footer>
 </div>
 
-<script src="standalone.js"></script>
-</body>
-</html>
+<script>
+(() => {
+  const S = { pubmed: "PubMed", trials: "Clinical Trials", web: "Parallel Search" };
+  const SESSION = "fanale-" + Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const NA = '<span class="na">Not listed in source</span>';
+  const LOOKING = '<span class="pending">Looking up on the web…</span>';
+  const has = (s) => s != null && String(s).trim() !== "";
+  const val = (s) => (has(s) ? esc(String(s).trim()) : NA);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---------- Example data (fictional, shown until a real search runs) ----------
+  const EXAMPLE = [
+    { firstName: "Elena", lastName: "Marrero", occupation: "Rheumatologist, Principal Investigator", phone: "(555) 010-2231", email: "e.marrero@example.org", organization: "Example University Hospital, Division of Rheumatology", organizationAddress: "100 Example Ave, San Juan, PR 00936", organizationPhone: "(555) 010-2200", organizationEmail: "rheum-trials@example.org", orgSource: { url: "https://example.org/contact", label: "example.org" }, country: "Puerto Rico", date: "2026-08-14", mla: 'Marrero, Elena, et al. "Example Study of Renal Outcomes in Lupus Nephritis." <i>Journal of Example Rheumatology</i>, vol. 12, no. 4, 2026, pp. 211-19.', ids: [] },
+    { firstName: "David", lastName: "Okafor", occupation: "Immunologist", phone: null, email: "d.okafor@example.org", organization: "Example Institute of Immunology", organizationAddress: "22 Sample Road, London", organizationPhone: "+44 20 0000 0000", organizationEmail: null, orgSource: { url: "https://example.org/about", label: "example.org" }, country: "United Kingdom", date: "2026-07-02", mla: 'Okafor, David, and Mei Lin. "Example Interferon Signatures in Autoimmune Disease." <i>Example Immunology Reports</i>, vol. 8, 2026, pp. 45-58.', ids: [] },
+    { firstName: "Sofía", lastName: "Reyes", occupation: "Pediatric Nephrologist", phone: null, email: null, organization: "Example Children's Medical Center", organizationAddress: "5 Placeholder St, Houston, TX", organizationPhone: "(555) 010-4400", organizationEmail: "research@example.org", orgSource: null, country: "United States", date: "2026-05-20", mla: 'Reyes, Sofía, et al. "Example Cohort of Childhood-Onset Lupus." <i>Example Pediatrics</i>, vol. 30, no. 2, 2026, pp. 77-84.', ids: [] },
+    { firstName: "Hiro", lastName: "Tanaka", occupation: null, phone: null, email: "h.tanaka@example.org", organization: "Example Medical University", organizationAddress: null, organizationPhone: null, organizationEmail: null, orgSource: null, country: "Japan", date: "2026-03", mla: 'Tanaka, Hiro, et al. "Example Biomarkers for Flare Prediction." <i>Example Clinical Medicine</i>, vol. 4, 2026, p. 19.', ids: [] },
+    { firstName: "Laura", lastName: "Bennett", occupation: "Principal Investigator", phone: null, email: null, organization: "Example Clinical Research Network", organizationAddress: "Boston, Massachusetts 02115", organizationPhone: "(555) 010-7700", organizationEmail: null, orgSource: { url: "https://example.org", label: "example.org" }, country: "United States", date: "2025-12-01", trialDate: true, mla: '"Example Phase 2 Trial of a Targeted Therapy in Lupus." <i>ClinicalTrials.gov</i>, sponsored by Example Clinical Research Network, NCT00000000.', ids: [] },
+  ];
+
+  const EX_CONT = ["North America", "Europe", "North America", "Asia", "North America"];
+  const EX_TX = [
+    [["Belimumab", "Medicine"], ["Mycophenolate mofetil", "Medicine"]],
+    [["Anifrolumab", "Medicine"]],
+    [["Hydroxychloroquine", "Medicine"], ["Exercise program", "Treatment"]],
+    [["Low-dose aspirin", "Medicine"]],
+    [["CAR-T cell therapy", "Treatment"]],
+  ];
+  EXAMPLE.forEach((r, i) => { r.continent = EX_CONT[i]; r.treatments = EX_TX[i].map(([name, kind]) => ({ name, kind, src: null })); if (i !== 3) r.profile = { url: "https://example.org/people/" + r.lastName.toLowerCase(), label: "example.org" }; });
+
+  // ---------- Capabilities ----------
+  let mcp = null, sample = null, perms = null, ctl = null, running = false;
+  let current = { list: [], q: "", raw: "" };
+  const C = window.claude;
+  const ready = (async () => {
+    if (!C || typeof C.use !== "function") return;
+    const safe = (p) => p.then((v) => v, () => null);
+    [mcp, sample, perms] = await Promise.all([safe(C.use("mcp")), safe(C.use("sample")), safe(C.use("permissions"))]);
+  })();
+
+  // ---------- UI helpers ----------
+  function setStep(id, state, count) {
+    const el = $("s-" + id);
+    el.classList.remove("active", "done", "error");
+    if (state) el.classList.add(state);
+    if (count !== undefined) $("n-" + id).textContent = count;
+  }
+  function resetSteps() { ["pubmed", "trials", "db", "web"].forEach((s) => setStep(s, null, "")); }
+  function notice(kind, html, action) {
+    $("notice").innerHTML = html ? `<div class="notice ${kind}" role="status"><div>${html}</div>${action ? `<div class="act">${action}</div>` : ""}</div>` : "";
+  }
+  const safeMLA = (s) => esc(s).replace(/&lt;i&gt;/g, "<i>").replace(/&lt;\/i&gt;/g, "</i>");
+  const orgField = (r, f) => (has(r[f]) ? esc(r[f]) : r.webPending ? LOOKING : NA);
+
+  function card(r, i) {
+    const name = [r.firstName, r.lastName].filter(Boolean).join(" ");
+    const ids = (r.ids || []).map((x) => {
+      if (x.type === "pmid") return `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(x.id)}/" target="_blank" rel="noopener">PMID ${esc(x.id)}</a>`;
+      if (x.type === "doi") return `<a href="https://doi.org/${esc(x.id)}" target="_blank" rel="noopener">DOI</a>`;
+      if (x.type === "nct") return `<a href="https://clinicaltrials.gov/study/${esc(x.id)}" target="_blank" rel="noopener">${esc(x.id)}</a>`;
+      return "";
+    }).join("");
+    const src = r.orgSource && r.orgSource.url
+      ? `<div class="src">Organization contact from <a href="${esc(r.orgSource.url)}" target="_blank" rel="noopener">${esc(r.orgSource.label || r.orgSource.url)}</a> via web search</div>` : "";
+    return `<article class="card">
+      <div class="cardHead"><span class="rank">${i + 1}</span><div style="min-width:0">
+        <h3 class="name">${esc(name) || "Unnamed researcher"}</h3>
+        <div class="occ">${r.occupation ? esc(r.occupation) : NA}</div></div></div>
+      <div class="block"><div class="label">Researcher contact</div>
+        <div class="who"><div class="avatar" aria-hidden="true">${esc(initials(r))}</div><div class="whoText">${profileLine(r)}</div></div>
+        <dl><dt>Phone</dt><dd>${val(r.phone)}</dd><dt>Email</dt><dd>${val(r.email)}</dd></dl></div>
+      <div class="block"><div class="label">Work organization</div>
+        <div class="org">${val(r.organization)}${r.country ? `<span class="country">${esc(r.country)}</span>` : ""}</div>
+        <dl><dt>Address</dt><dd>${val(r.organizationAddress)}</dd><dt>Phone</dt><dd>${orgField(r, "organizationPhone")}</dd><dt>Email</dt><dd>${orgField(r, "organizationEmail")}</dd></dl>
+        ${src}</div>
+      <div class="block"><div class="label">Treatment and medicine</div>
+        ${treatList(r)}</div>
+      <div class="block pub"><div class="label">${r.trialDate ? "Most recent work (trial start)" : "Most recent publication"}</div>
+        <div class="date">${val(r.date)}</div>
+        <div class="mla">${r.mla ? safeMLA(r.mla) : NA}</div>
+        ${ids ? `<div class="ids">${ids}</div>` : ""}</div>
+    </article>`;
+  }
+
+  const initials = (r) => ((r.firstName || "").trim().charAt(0) + (r.lastName || "").trim().charAt(0)).toUpperCase() || "?";
+  function profileLine(r) {
+    if (r.profile && r.profile.url) return `<a href="${esc(r.profile.url)}" target="_blank" rel="noopener">Profile and photo</a><div class="src">${esc(r.profile.label)} · found by web search, confirm it is the same person</div>`;
+    if (r.profilePending) return LOOKING;
+    return `<span class="na">No profile page found</span>`;
+  }
+  function srcLink(s) {
+    if (!s) return "";
+    return s.type === "nct"
+      ? `<a href="https://clinicaltrials.gov/study/${esc(s.id)}" target="_blank" rel="noopener">${esc(s.id)}</a>`
+      : `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(s.id)}/" target="_blank" rel="noopener">PMID ${esc(s.id)}</a>`;
+  }
+  function treatList(r) {
+    const t = r.treatments || [];
+    if (!t.length) return `<div class="na">None named in this researcher's papers or trials</div>`;
+    return `<ul class="tx">${t.map((x) => `<li><span class="txName">${esc(x.name)}</span><span class="kind ${x.kind === "Medicine" ? "med" : "trt"}">${x.kind}</span><span class="txSrc">${srcLink(x.src)}</span></li>`).join("")}</ul>
+      <div class="src">Named in the research. Not a recommendation.</div>`;
+  }
+  const treatText = (r) => (r.treatments || []).map((x) => `${esc(x.name)} (${x.kind.toLowerCase()})`).join(", ");
+
+  // ---------- Continents ----------
+  const CONTINENTS = ["North America", "South America", "Europe", "Asia", "Africa", "Oceania"];
+  const C_MAP = (() => {
+    const m = {}, add = (c, names) => names.split("|").forEach((n) => { m[n] = c; });
+    add("North America", "united states|usa|us|u.s.a.|u.s.|united states of america|puerto rico|pr|canada|mexico|cuba|dominican republic|jamaica|haiti|trinidad and tobago|barbados|bahamas|guatemala|honduras|el salvador|nicaragua|costa rica|panama|belize|virgin islands|us virgin islands");
+    add("South America", "brazil|argentina|chile|colombia|peru|venezuela|ecuador|bolivia|uruguay|paraguay|guyana|suriname");
+    add("Europe", "united kingdom|uk|england|scotland|wales|northern ireland|ireland|france|germany|italy|spain|portugal|netherlands|the netherlands|belgium|switzerland|austria|sweden|norway|denmark|finland|iceland|poland|czech republic|czechia|slovakia|hungary|romania|bulgaria|greece|croatia|serbia|slovenia|bosnia and herzegovina|albania|north macedonia|estonia|latvia|lithuania|ukraine|belarus|russia|russian federation|luxembourg|malta|cyprus|monaco");
+    add("Asia", "china|japan|south korea|korea|republic of korea|india|pakistan|bangladesh|sri lanka|nepal|taiwan|hong kong|singapore|malaysia|thailand|vietnam|viet nam|indonesia|philippines|israel|turkey|türkiye|iran|iraq|saudi arabia|united arab emirates|uae|qatar|kuwait|oman|bahrain|jordan|lebanon|syria|kazakhstan|uzbekistan|mongolia|cambodia|myanmar|laos");
+    add("Africa", "south africa|nigeria|egypt|kenya|ethiopia|ghana|morocco|algeria|tunisia|uganda|tanzania|rwanda|cameroon|senegal|zimbabwe|zambia|malawi|botswana|sudan|ivory coast|cote d'ivoire|mozambique|namibia");
+    add("Oceania", "australia|new zealand|fiji|papua new guinea");
+    return m;
+  })();
+  const continentOf = (country) => {
+    const k = norm(country).replace(/[.\s]+$/, "").trim();
+    return C_MAP[k] || C_MAP[k.replace(/^the\s+/, "")] || null;
+  };
+
+  const PER_CONTINENT = 10;
+  // Visible researchers grouped by continent (North America first), at most PER_CONTINENT each, newest first.
+  function groupShown(list) {
+    const vis = list.filter(visible);
+    return [...CONTINENTS, null].map((c) => ({ c, people: vis.filter((r) => (r.continent || null) === c).slice(0, PER_CONTINENT) })).filter((g) => g.people.length);
+  }
+
+  function render(list, meta) {
+
+    // Cards are grouped by continent, North America first; numbering restarts at 1 in each continent, newest first.
+    let html = "";
+    for (const { c, people } of groupShown(list)) {
+      const g = people.map((r) => ({ r }));
+      html += `<section class="cont" aria-label="${esc(c || "Location not listed")}">
+        <h3 class="contHead">${esc(c || "Location not listed")}<span class="contN">${g.length} ${g.length === 1 ? "researcher" : "researchers"}</span></h3>
+        <div class="grid">${g.map((x, j) => card(x.r, j)).join("")}</div></section>`;
+    }
+    $("grid").innerHTML = html;
+    if (meta) { $("rtitle").textContent = meta.title; $("rmeta").textContent = meta.sub; }
+    $("dbCount").textContent = `· ${list.length} ${list.length === 1 ? "record" : "records"}`;
+    $("dbRows").innerHTML = list.map((r) => `<tr>
+      <td class="date">${val(r.date)}</td>
+      <td>${esc([r.firstName, r.lastName].filter(Boolean).join(" "))}${r.occupation ? `<br><span class="na" style="font-style:normal">${esc(r.occupation)}</span>` : ""}</td>
+      <td>${val(r.organization)}</td><td>${val(r.country)}</td><td>${val(r.continent)}</td><td>${val(r.email)}</td><td>${val(r.phone)}</td>
+      <td>${treatText(r) || NA}</td>
+      <td>${r.mla ? safeMLA(r.mla) : NA}</td></tr>`).join("");
+  }
+
+  // ---------- Dates, MLA ----------
+  const MON = ["Jan.", "Feb.", "Mar.", "Apr.", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."];
+  const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  function pubDate(pd) {
+    if (!pd || !pd.year) return "";
+    let m = pd.month; if (m && isNaN(+m)) m = MONTHS[String(m).slice(0, 3).toLowerCase()];
+    const d = pd.day;
+    return [pd.year, m ? String(m).padStart(2, "0") : null, m && d ? String(d).padStart(2, "0") : null].filter(Boolean).join("-");
+  }
+  const dateKey = (d) => {
+    const m = String(d || "").match(/(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?/);
+    return m ? `${m[1]}-${String(m[2] || 0).padStart(2, "0")}-${String(m[3] || 0).padStart(2, "0")}` : "0000-00-00";
+  };
+  const byRecent = (a, b) => dateKey(b.date).localeCompare(dateKey(a.date));
+  const SMALL = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "the", "to", "with"]);
+  const titleCase = (s) => String(s || "").split(/\s+/).map((w, i) => (i > 0 && SMALL.has(w.toLowerCase())) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  function mlaArticle(a) {
+    const au = a.authors || [];
+    const first = au[0] ? `${au[0].last_name}${au[0].fore_name ? ", " + au[0].fore_name : ""}` : "";
+    let who = "";
+    if (au.length === 1) who = first + ". ";
+    else if (au.length === 2) who = `${first}, and ${[au[1].fore_name, au[1].last_name].filter(Boolean).join(" ")}. `;
+    else if (au.length > 2) who = `${first}, et al. `;
+    const title = String(a.title || "").replace(/\.$/, "");
+    const j = a.journal && a.journal.title ? titleCase(a.journal.title) : "";
+    const c = a.citation || {};
+    const parts = [];
+    if (j) parts.push(`<i>${j}</i>`);
+    if (c.volume) parts.push(`vol. ${c.volume}`);
+    if (c.issue) parts.push(`no. ${c.issue}`);
+    const pd = a.publication_date || {};
+    let m = pd.month; if (m && !isNaN(+m)) m = MON[+m - 1]; else if (m) m = MON[(MONTHS[String(m).slice(0, 3).toLowerCase()] || 1) - 1];
+    if (pd.year) parts.push([pd.day, m, pd.year].filter(Boolean).join(" "));
+    if (c.pages) parts.push(/[-–]/.test(c.pages) ? `pp. ${c.pages}` : `p. ${c.pages}`);
+    const doi = a.identifiers && a.identifiers.doi;
+    return `${who}"${title}." ${parts.join(", ")}.${doi ? ` https://doi.org/${doi}.` : ""}`;
+  }
+  function mlaTrial(t) {
+    return `"${String(t.title || "").replace(/\.$/, "")}." <i>ClinicalTrials.gov</i>${t.sponsor ? `, sponsored by ${t.sponsor}` : ""}, ${t.nct_id}, clinicaltrials.gov/study/${t.nct_id}.`;
+  }
+
+  // ---------- Connector calls ----------
+  const problems = {};
+  async function call(server, tool, input, signal) {
+    const r = await mcp.callTool(server, tool, input, { signal });
+    return r.payload !== undefined ? r.payload : r.content;
+  }
+  function connectorCopy(code, server) {
+    switch (code) {
+      case "server_not_connected": case "server_not_found": case "selection_required":
+        return `Add the <b>${esc(server)}</b> connector in claude.ai Settings → Connectors, then search again.`;
+      case "needs_reauth": return `Reconnect <b>${esc(server)}</b> in claude.ai Settings → Connectors.`;
+      case "not_in_manifest": case "not_granted": case "consent_required":
+        return `<b>${esc(server)}</b> is turned off for this page. Allow it from the page's Permissions menu.`;
+      case "blocked_by_policy": return `Your organization blocks <b>${esc(server)}</b> for this page.`;
+      case "busy": return `<b>${esc(server)}</b> is busy right now (its free tier limits how often it can search). Wait a minute, then retry the web lookup.`;
+      default: return `<b>${esc(server)}</b> did not answer. Results may be incomplete; try again in a moment.`;
+    }
+  }
+
+  async function fetchPubMed(q, signal) {
+    setStep("pubmed", "active");
+    try {
+      const s = await call(S.pubmed, "search_articles", { query: q, sort: "pub_date", max_results: 40 }, signal);
+      const pmids = (s && s.pmids) || [];
+      if (!pmids.length) { setStep("pubmed", "done", "0 articles"); return []; }
+      const m = await call(S.pubmed, "get_article_metadata", { pmids }, signal);
+      const arts = (m && m.articles) || [];
+      setStep("pubmed", "done", `${arts.length} articles`);
+      return arts;
+    } catch (e) { problems[S.pubmed] = e && e.code; setStep("pubmed", "error"); return []; }
+  }
+
+  async function fetchTrials(q, signal) {
+    setStep("trials", "active");
+    const status = ["RECRUITING", "NOT_YET_RECRUITING", "ACTIVE_NOT_RECRUITING", "ENROLLING_BY_INVITATION"];
+    try {
+      const [tr, inv] = await Promise.all([
+        call(S.trials, "search_trials", { condition: q, status, page_size: 25 }, signal),
+        call(S.trials, "search_investigators", { condition: q, status, page_size: 20 }, signal),
+      ]);
+      const trials = (tr && tr.items) || [];
+      const seen = new Set(), invs = [];
+      for (const x of (inv && inv.investigators) || []) {
+        if (!x || !x.name || /site public contact/i.test(x.name) || x.role !== "PRINCIPAL_INVESTIGATOR") continue;
+        const k = x.name + "|" + x.nct_id; if (seen.has(k)) continue; seen.add(k);
+        invs.push(x); if (invs.length >= 40) break;
+      }
+      setStep("trials", "done", `${trials.length} trials`);
+      return { trials, invs };
+    } catch (e) { problems[S.trials] = e && e.code; setStep("trials", "error"); return { trials: [], invs: [] }; }
+  }
+
+  // Compact source data for Claude, keeping lead and senior authors.
+  function compact(arts, tr) {
+    const articles = arts.map((a) => {
+      const au = a.authors || [];
+      const pick = au.length > 3 ? [au[0], au[1], au[au.length - 1]] : au;
+      return {
+        pmid: a.identifiers && a.identifiers.pmid, date: pubDate(a.publication_date), title: a.title,
+        abstract: String(a.abstract || "").slice(0, 800), keywords: (a.keywords || []).slice(0, 12),
+        authors: pick.map((x, i) => ({ name: [x.fore_name, x.last_name].filter(Boolean).join(" "), position: x === au[0] ? "first" : x === au[au.length - 1] ? "last" : "co-author",
+          affiliation: (x.affiliations || []).slice(0, 2).join(" | ").slice(0, 400) })),
+      };
+    });
+    const trialDates = {};
+    for (const t of tr.trials) trialDates[t.nct_id] = t;
+    const investigators = tr.invs.map((x) => ({ name: x.name, role: x.role, affiliation: x.affiliation, facility: x.facility, location: x.location, nct_id: x.nct_id, start_date: trialDates[x.nct_id] ? trialDates[x.nct_id].start_date : null,
+      trial_title: trialDates[x.nct_id] ? trialDates[x.nct_id].title : null, interventions: trialDates[x.nct_id] ? trialDates[x.nct_id].interventions || [] : [] }));
+    return { articles, investigators };
+  }
+
+  function buildPrompt(q, data) {
+    return `You are Fanale's research assistant. From the PubMed and ClinicalTrials.gov records below for the diagnosis "${q}", build a researcher database.
+
+Choose up to 40 researchers, from as many different countries as the records allow: prefer first and last (senior) authors of the articles and trial principal investigators. Merge the same person across records.
+
+For each researcher return:
+- firstName, lastName (as written in the records)
+- occupation: a role or degree stated in the records (e.g. "MD", "Principal Investigator", "Department of Rheumatology"); else null
+- email: only if an email appears in that researcher's own affiliation text, exactly as written; else null
+- phone: only if a phone number appears in that researcher's own record, exactly as written; else null
+- organization: the institution name from the affiliation or trial facility
+- organizationAddress: street, city, state/region and postal code as written in the affiliation or trial location; else null
+- country: from the affiliation or location; else null
+- continent: the continent of that country or location, one of "North America" (includes Central America and the Caribbean, e.g. Puerto Rico, Mexico, Cuba), "South America", "Europe", "Asia" (includes the Middle East), "Africa", "Oceania"; null if no location is given
+- pmids: the PMIDs of articles this person authored (from the records)
+- nctIds: the NCT IDs of trials this person leads (from the records)
+- treatments: up to 5 treatments or medicines named in THIS person's own articles (title, abstract, keywords) or trials (interventions), each as {"name": the treatment or drug name exactly as written in that source, "kind": "Medicine" for a drug, biologic or other pharmaceutical, or "Treatment" for a procedure, therapy, device, cell therapy or lifestyle intervention, "source": the PMID ("PMID:12345678") or NCT ID it appears in}. Only items that treat or manage the condition; skip lab measures, biomarkers and disease names. Empty list if none.
+
+Never invent anything. Use only the records below. Reply with only this JSON:
+{"researchers":[{"firstName":"","lastName":"","occupation":null,"email":null,"phone":null,"organization":null,"organizationAddress":null,"country":null,"continent":null,"pmids":[],"nctIds":[],"treatments":[{"name":"","kind":"Medicine","source":""}]}]}
+
+RECORDS:
+${JSON.stringify(data)}`;
+  }
+
+  const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+  // Turn Claude's records into verified cards: every id, email and phone must exist in the source data.
+  function assemble(people, arts, tr, raw) {
+    const rawL = raw.toLowerCase(), rawN = norm(raw), rawD = raw.replace(/\D/g, "");
+    const artBy = {}; for (const a of arts) if (a.identifiers) artBy[a.identifiers.pmid] = a;
+    const trialBy = {}; for (const t of tr.trials) trialBy[t.nct_id] = t;
+    const out = new Map();
+    for (const p of people || []) {
+      if (!p || !has(p.lastName) || !rawN.includes(norm(p.lastName).trim())) continue;
+      const pm = (p.pmids || []).map(String).filter((id) => artBy[id]);
+      const nc = (p.nctIds || []).map((s) => String(s).toUpperCase()).filter((id) => tr.invs.some((x) => x.nct_id === id));
+      if (!pm.length && !nc.length) continue;
+      const r = { firstName: p.firstName, lastName: p.lastName, occupation: p.occupation || null,
+        email: has(p.email) && rawL.includes(String(p.email).toLowerCase().trim()) ? String(p.email).trim().replace(/\.$/, "") : null,
+        phone: null, organization: p.organization || null, organizationAddress: p.organizationAddress || null, country: p.country || null,
+        organizationPhone: null, organizationEmail: null, orgSource: null };
+      r.continent = continentOf(r.country) || (CONTINENTS.includes(p.continent) ? p.continent : null);
+      const d = String(p.phone || "").replace(/\D/g, ""); if (d.length >= 7 && rawD.includes(d)) r.phone = p.phone;
+      // most recent item
+      const items = pm.map((id) => ({ date: pubDate(artBy[id].publication_date), mla: mlaArticle(artBy[id]), ids: [{ type: "pmid", id }, ...(artBy[id].identifiers.doi ? [{ type: "doi", id: artBy[id].identifiers.doi }] : [])] }))
+        .concat(nc.map((id) => ({ date: trialBy[id] ? trialBy[id].start_date : "", trialDate: true, mla: trialBy[id] ? mlaTrial(trialBy[id]) : `ClinicalTrials.gov, ${id}, clinicaltrials.gov/study/${id}.`, ids: [{ type: "nct", id }] })));
+      items.sort(byRecent);
+      const top = items[0];
+      Object.assign(r, { date: top.date, trialDate: !!top.trialDate, mla: top.mla, ids: items.flatMap((x) => x.ids).slice(0, 4) });
+      // Treatments: each must be named in the specific article or trial it is credited to.
+      const srcText = (s) => {
+        const p = String(s || "").match(/\d{5,}/), n = String(s || "").toUpperCase().match(/NCT\d{8}/);
+        if (n && nc.includes(n[0]) && trialBy[n[0]]) return { id: n[0], type: "nct", text: norm([trialBy[n[0]].title, ...(trialBy[n[0]].interventions || [])].join(" ")) };
+        if (p && pm.includes(p[0]) && artBy[p[0]]) { const a = artBy[p[0]]; return { id: p[0], type: "pmid", text: norm([a.title, a.abstract, ...(a.keywords || []), ...(a.mesh_terms || [])].join(" ")) }; }
+        return null;
+      };
+      const tseen = new Set();
+      r.treatments = (Array.isArray(p.treatments) ? p.treatments : []).map((t) => {
+        if (!t || !has(t.name)) return null;
+        const s = srcText(t.source); const nm = norm(t.name).trim();
+        if (!s || nm.length < 3 || !s.text.includes(nm) || tseen.has(nm)) return null;
+        tseen.add(nm);
+        return { name: String(t.name).trim(), kind: t.kind === "Treatment" ? "Treatment" : "Medicine", src: s };
+      }).filter(Boolean).slice(0, 5);
+      const k = norm(r.firstName) + "|" + norm(r.lastName);
+      if (!out.has(k) || byRecent(r, out.get(k)) < 0) out.set(k, r);
+    }
+    return [...out.values()].sort(byRecent);
+  }
+
+  // ---------- Web lookups (Parallel Search) ----------
+  const reachable = (r) => has(r.email) || has(r.phone) || has(r.organizationPhone) || has(r.organizationEmail);
+  const hasTreat = (r) => (r.treatments || []).length > 0;
+  // Shown in the grid: has a treatment or medicine, and (once the web lookup has run) a way to reach them.
+  const visible = (r) => hasTreat(r) && (!current.filtered || reachable(r));
+  const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
+
+  // One Parallel Search call, with a single retry when the free tier is busy. Returns result text, or null on failure.
+  async function webSearch(input, signal) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { const p = await call(S.web, "web_search", { ...input, session_id: SESSION }, signal); return typeof p === "string" ? p : JSON.stringify(p); }
+      catch (e) {
+        const code = e && e.code;
+        if (code === "cancelled") throw e;
+        const busy = code === "tool_error" && /too many|429|rate/i.test(String(e.message || ""));
+        if (attempt === 0 && (busy || (e && e.retryable))) { await sleep(4000 + Math.random() * 2000); continue; }
+        problems[S.web] = busy ? "busy" : code;
+        return null;
+      }
+    }
+    return null;
+  }
+
+  const orgTried = new Set();
+  async function orgLookup(list, signal) {
+    const need = [], seen = new Set();
+    for (const r of list) {
+      if (!r.organization || (r.organizationPhone && r.organizationEmail)) continue;
+      const k = norm(r.organization); if (seen.has(k) || orgTried.has(k)) continue; seen.add(k); orgTried.add(k);
+      need.push({ organization: r.organization, place: [r.organizationAddress, r.country].filter(Boolean).join(", ") });
+      if (need.length >= 10) break;
+    }
+    if (!need.length) return 0;
+    const text = await webSearch({
+      objective: "Find the official main phone number and general contact email address of each of these research institutions, hospitals or universities, from their official websites: " + need.map((n) => `${n.organization}${n.place ? " (" + n.place + ")" : ""}`).join("; "),
+      search_queries: need.map((n) => `${n.organization.split(/[,|]/).slice(0, 2).join(" ").slice(0, 60)} contact phone email`),
+    }, signal);
+    if (!text) return 0;
+    let found = [];
+    try {
+      const res = await sample.json(`Below are web search results. For each organization in the list, give its official main phone number and general contact email ONLY if they appear in the results, copied exactly, plus the URL of the page they came from. Use null when not present. Never guess.
+Reply with only JSON: {"orgs":[{"organization":"","phone":null,"email":null,"url":null}]}
+
+ORGANIZATIONS: ${JSON.stringify(need.map((n) => n.organization))}
+
+RESULTS:
+${text.slice(0, 60000)}`, { modelTier: "quick", signal });
+      found = (res && res.orgs) || [];
+    } catch (e) { if (e && e.code === "cancelled") throw e; }
+    const tL = text.toLowerCase(), tD = text.replace(/\D/g, "");
+    let filled = 0;
+    for (const r of list) {
+      const f = found.find((x) => x && norm(x.organization) === norm(r.organization));
+      if (!f) continue;
+      const url = has(f.url) && tL.includes(String(f.url).toLowerCase()) ? String(f.url) : null;
+      const d = String(f.phone || "").replace(/\D/g, "");
+      const ph = d.length >= 7 && tD.includes(d) ? f.phone : null;
+      const em = has(f.email) && tL.includes(String(f.email).toLowerCase()) ? f.email : null;
+      if (!r.organizationPhone && ph) { r.organizationPhone = ph; filled++; }
+      if (!r.organizationEmail && em) { r.organizationEmail = em; filled++; }
+      if ((ph || em) && url) r.orgSource = { url, label: hostOf(url) };
+    }
+    return filled;
+  }
+
+  // Find each shown researcher's official profile page, where their photo is.
+  async function profileLookup(people, signal) {
+    if (!people.length) return 0;
+    const text = await webSearch({
+      objective: "Find the official staff or faculty profile page (with photo) of each of these medical researchers at their institution: " + people.map((r) => `${r.firstName} ${r.lastName}, ${r.organization || ""}`).join("; "),
+      search_queries: people.map((r) => `${r.firstName} ${r.lastName} ${(r.organization || "").split(/[,|]/)[0].slice(0, 40)} profile`),
+    }, signal);
+    if (!text) return 0;
+    let found = [];
+    try {
+      const res = await sample.json(`Below are web search results. For each researcher, give the URL of their official profile page (a university, hospital or institute staff page, or a professional profile such as ORCID or ResearchGate) ONLY if a result clearly refers to this same person at this organization. Use null otherwise. Never guess or build URLs.
+Reply with only JSON: {"profiles":[{"firstName":"","lastName":"","url":null}]}
+
+RESEARCHERS: ${JSON.stringify(people.map((r) => ({ firstName: r.firstName, lastName: r.lastName, organization: r.organization })))}
+
+RESULTS:
+${text.slice(0, 60000)}`, { modelTier: "quick", signal });
+      found = (res && res.profiles) || [];
+    } catch (e) { if (e && e.code === "cancelled") throw e; }
+    const tL = text.toLowerCase(), tN = norm(text);
+    let n = 0;
+    for (const r of people) {
+      const f = found.find((x) => x && norm(x.lastName) === norm(r.lastName) && norm(x.firstName).slice(0, 1) === norm(r.firstName).slice(0, 1));
+      if (!f || !has(f.url) || !/^https?:\/\//i.test(f.url)) continue;
+      if (!tL.includes(String(f.url).toLowerCase()) || !tN.includes(norm(r.lastName))) continue;
+      r.profile = { url: String(f.url), label: hostOf(f.url) }; n++;
+    }
+    return n;
+  }
+
+  async function webLookup(list, signal) {
+    list.forEach((r) => { r.webPending = !!r.organization && !(r.organizationPhone && r.organizationEmail); r.profilePending = false; });
+    current.filtered = false;
+    render(list);
+    setStep("web", "active", "organizations");
+    orgTried.clear();
+    let filled = 0;
+    for (let i = 0; i < 4 && !problems[S.web]; i++) {
+      const before = orgTried.size;
+      filled += await orgLookup(list.filter(hasTreat), signal);
+      if (orgTried.size === before) break;
+      render(list, subFor(list));
+      await sleep(1500);
+    }
+    list.forEach((r) => { r.webPending = false; });
+    current.filtered = true;
+    const shown = groupShown(list).flatMap((g) => g.people);
+    shown.forEach((r) => { if (!r.profile) r.profilePending = true; });
+    render(list, subFor(list));
+    setStep("web", "active", "profiles");
+    let profiles = 0;
+    const todo = shown.filter((r) => !r.profile);
+    for (let i = 0; i < todo.length && i < 36 && !problems[S.web]; i += 12) {
+      profiles += await profileLookup(todo.slice(i, i + 12), signal);
+      todo.slice(i, i + 12).forEach((r) => { r.profilePending = false; });
+      render(list, subFor(list));
+      if (i + 12 < todo.length) await sleep(1500);
+    }
+    list.forEach((r) => { r.profilePending = false; });
+    setStep("web", problems[S.web] ? "error" : "done", `${filled} contacts · ${profiles} profiles`);
+    render(list, subFor(list));
+  }
+
+  function subFor(list) {
+    const groups = groupShown(list), n = groups.reduce((a, g) => a + g.people.length, 0), hidden = list.length - list.filter(visible).length;
+    const over = list.filter(visible).length - n;
+    return {
+      title: n ? `Researchers for “${current.q}”` : `No researchers with contact details and treatments for “${current.q}”`,
+      sub: `${n} shown · up to ${PER_CONTINENT} per continent, newest first${over ? ` · ${over} more over the limit` : ""}${hidden ? ` · ${hidden} hidden for missing contact details or treatments (see database below)` : ""}`,
+    };
+  }
+
+  function sampleCopy(code) {
+    switch (code) {
+      case "not_granted": return "This page needs permission to use Claude to build the database. Allow it from the page's Permissions menu, then search again.";
+      case "sampling_disabled": return "Claude is not available for this account, so the database cannot be built.";
+      case "rate_limited": return "Too many searches in a short time. Wait a minute, then try again.";
+      case "session_expired": return "Your Claude session expired. Sign in again, then search.";
+      case "invalid_json": case "empty_completion": return "The search finished but the results could not be read. Try again, or use a more specific diagnosis.";
+      case "refused": return "Claude declined this search. Try wording the diagnosis differently.";
+      case "prompt_too_large": return "Too much data came back for one search. Try a more specific diagnosis.";
+      default: return "The search was interrupted. Try again.";
+    }
+  }
+  function problemNotes() { return Object.entries(problems).filter(([, c]) => c).map(([s, c]) => connectorCopy(c, s)); }
+  const retryBtn = `<button class="btn btn-ghost btn-small" type="button" id="retryWeb">Retry web lookup</button>`;
+
+  async function runSearch(q) {
+    await ready;
+    if (!mcp || !sample) {
+      notice("err", "<b>Live search runs inside Claude.</b> Open this page in claude.ai or the Claude desktop app, with the PubMed, Clinical Trials and Parallel Search connectors added.");
+      return;
+    }
+    running = true; $("go").disabled = true; $("stop").hidden = false;
+    for (const k in problems) delete problems[k];
+    resetSteps();
+    notice("", "<b>Searching.</b> This usually takes 30 to 90 seconds.");
+    $("rtitle").textContent = `Searching for “${q}”`; $("rmeta").textContent = "";
+    if (perms) { try { await perms.request([`mcp:${S.pubmed}`, `mcp:${S.trials}`, `mcp:${S.web}`, "sample"]); } catch {} }
+    ctl = new AbortController();
+    const signal = ctl.signal;
+    try {
+      const [arts, tr] = await Promise.all([fetchPubMed(q, signal), fetchTrials(q, signal)]);
+      if (!arts.length && !tr.invs.length) {
+        notice("err", problemNotes().join("<br>") || `PubMed and ClinicalTrials.gov returned no records for “${esc(q)}”. Try another name for the diagnosis.`);
+        render([], { title: "No results", sub: "" });
+        return;
+      }
+      setStep("db", "active");
+      const data = compact(arts, tr);
+      const raw = JSON.stringify(data);
+      const out = await sample.json(buildPrompt(q, data), { modelTier: "default", signal });
+      const list = assemble(out && out.researchers, arts, tr, raw);
+      setStep("db", "done", `${list.length} researchers`);
+      current = { list, q, filtered: false };
+      render(list, list.length ? subFor(list) : { title: `No researchers found for “${q}”`, sub: "Try a broader or alternate name for the diagnosis." });
+      notice(problemNotes().length ? "err" : "", problemNotes().join("<br>"));
+      if (list.some(hasTreat)) {
+        await webLookup(list, signal);
+        const notes = problemNotes();
+        notice(notes.length ? "err" : "", notes.join("<br>"), problems[S.web] ? retryBtn : "");
+      }
+    } catch (e) {
+      const code = e && e.code ? e.code : "upstream_error";
+      notice(code === "cancelled" ? "" : "err", code === "cancelled" ? "Search stopped." : sampleCopy(code));
+      ["pubmed", "trials", "db", "web"].forEach((s) => { if ($("s-" + s).classList.contains("active")) setStep(s, code === "cancelled" ? null : "error"); });
+      current.list.forEach((r) => { r.webPending = false; r.profilePending = false; });
+      if (current.list.length) render(current.list);
+    } finally {
+      running = false; $("go").disabled = false; $("stop").hidden = true;
+    }
+  }
+
+  async function retryWeb() {
+    if (running || !current.list.length) return;
+    running = true; $("go").disabled = true; $("stop").hidden = false;
+    delete problems[S.web];
+    notice("", "Retrying the web lookup…");
+    ctl = new AbortController();
+    try {
+      await webLookup(current.list, ctl.signal);
+      const notes = problemNotes();
+      notice(notes.length ? "err" : "", notes.join("<br>"), problems[S.web] ? retryBtn : "");
+    } catch { notice("", "Web lookup stopped."); current.list.forEach((r) => { r.webPending = false; r.profilePending = false; }); render(current.list); }
+    finally { running = false; $("go").disabled = false; $("stop").hidden = true; }
+  }
+
+  // ---------- Wire up ----------
+  $("form").addEventListener("submit", (e) => { e.preventDefault(); const q = $("q").value.trim(); if (q && !running) runSearch(q); });
+  $("stop").addEventListener("click", () => ctl && ctl.abort());
+  $("notice").addEventListener("click", (e) => { if (e.target && e.target.id === "retryWeb") retryWeb(); });
+  document.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.q; if (!running) runSearch(b.dataset.q); }));
+
+  // Resting state: example layout with fictional researchers.
+  notice("example", "<b>Example layout.</b> These five researchers are fictional, to show how results look, grouped by continent. Search a diagnosis to load real data.");
+  render([...EXAMPLE].sort(byRecent), { title: "Researchers for “lupus” (example)", sub: "5 shown · up to 10 per continent, newest first" });
+})();
+</script>

@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import path from "node:path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const PAGE = pathToFileURL(path.join(here, "..", "index.html")).href;
+const PAGE = pathToFileURL(path.join(here, "..", "claude", "index.html")).href;
 
 let failures = 0;
 const check = (ok, msg) => { console.log(`${ok ? "PASS" : "FAIL"}  ${msg}`); if (!ok) failures++; };

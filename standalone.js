@@ -1,0 +1,372 @@
+(() => {
+  // Fanale, free standalone version: runs entirely in the visitor's browser.
+  // Data: NCBI E-utilities (PubMed) and the ClinicalTrials.gov v2 API, called directly. No AI, no keys, nothing stored.
+  const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/";
+  const CTGOV = "https://clinicaltrials.gov/api/v2/studies";
+  const PER_CONTINENT = 10;
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const NA = '<span class="na">Not listed in source</span>';
+  const has = (s) => s != null && String(s).trim() !== "";
+  const val = (s) => (has(s) ? esc(String(s).trim()) : NA);
+  const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  const google = (q) => "https://www.google.com/search?q=" + encodeURIComponent(q);
+
+  // ---------- Continents ----------
+  const CONTINENTS = ["North America", "South America", "Europe", "Asia", "Africa", "Oceania"];
+  const C_MAP = (() => {
+    const m = {}, add = (c, names) => names.split("|").forEach((n) => { m[n] = c; });
+    add("North America", "united states|usa|us|u.s.a|u.s|united states of america|puerto rico|pr|canada|mexico|cuba|dominican republic|jamaica|haiti|trinidad and tobago|barbados|bahamas|guatemala|honduras|el salvador|nicaragua|costa rica|panama|belize|virgin islands|us virgin islands");
+    add("South America", "brazil|argentina|chile|colombia|peru|venezuela|ecuador|bolivia|uruguay|paraguay|guyana|suriname");
+    add("Europe", "united kingdom|uk|england|scotland|wales|northern ireland|ireland|france|germany|italy|spain|portugal|netherlands|the netherlands|belgium|switzerland|austria|sweden|norway|denmark|finland|iceland|poland|czech republic|czechia|slovakia|hungary|romania|bulgaria|greece|croatia|serbia|slovenia|bosnia and herzegovina|albania|north macedonia|estonia|latvia|lithuania|ukraine|belarus|russia|russian federation|luxembourg|malta|cyprus|monaco");
+    add("Asia", "china|p.r. china|pr china|people's republic of china|japan|south korea|korea|republic of korea|korea, republic of|india|pakistan|bangladesh|sri lanka|nepal|taiwan|hong kong|singapore|malaysia|thailand|vietnam|viet nam|indonesia|philippines|israel|turkey|türkiye|turkiye|iran|iraq|saudi arabia|united arab emirates|uae|qatar|kuwait|oman|bahrain|jordan|lebanon|syria|kazakhstan|uzbekistan|mongolia|cambodia|myanmar|laos");
+    add("Africa", "south africa|nigeria|egypt|kenya|ethiopia|ghana|morocco|algeria|tunisia|uganda|tanzania|rwanda|cameroon|senegal|zimbabwe|zambia|malawi|botswana|sudan|ivory coast|cote d'ivoire|mozambique|namibia");
+    add("Oceania", "australia|new zealand|fiji|papua new guinea");
+    return m;
+  })();
+  const continentOf = (country) => {
+    const k = norm(country).replace(/[.\s]+$/, "").replace(/^the\s+/, "");
+    return C_MAP[k] || null;
+  };
+
+  // ---------- Example data (fictional, shown until a real search runs) ----------
+  const EXAMPLE = [
+    { firstName: "Elena", lastName: "Marrero", occupation: "Rheumatologist, Principal Investigator", phone: "(555) 010-2231", email: "e.marrero@example.org", organization: "Example University Hospital, Division of Rheumatology", organizationAddress: "100 Example Ave, San Juan, PR 00936", organizationPhone: "(555) 010-2200", organizationEmail: "rheum-trials@example.org", country: "Puerto Rico", date: "2026-08-14", mla: 'Marrero, Elena, et al. "Example Study of Renal Outcomes in Lupus Nephritis." <i>Journal of Example Rheumatology</i>, vol. 12, no. 4, 2026, pp. 211-19.', treatments: [["Belimumab", "Medicine"], ["Mycophenolate mofetil", "Medicine"]] },
+    { firstName: "David", lastName: "Okafor", occupation: "Immunologist", email: "d.okafor@example.org", organization: "Example Institute of Immunology", organizationAddress: "22 Sample Road, London", country: "United Kingdom", date: "2026-07-02", mla: 'Okafor, David, and Mei Lin. "Example Interferon Signatures in Autoimmune Disease." <i>Example Immunology Reports</i>, vol. 8, 2026, pp. 45-58.', treatments: [["Anifrolumab", "Medicine"]] },
+    { firstName: "Sofía", lastName: "Reyes", occupation: "Pediatric Nephrologist", organization: "Example Children's Medical Center", organizationAddress: "5 Placeholder St, Houston, TX", organizationPhone: "(555) 010-4400", organizationEmail: "research@example.org", country: "United States", date: "2026-05-20", mla: 'Reyes, Sofía, et al. "Example Cohort of Childhood-Onset Lupus." <i>Example Pediatrics</i>, vol. 30, no. 2, 2026, pp. 77-84.', treatments: [["Hydroxychloroquine", "Medicine"], ["Exercise program", "Treatment"]] },
+    { firstName: "Hiro", lastName: "Tanaka", email: "h.tanaka@example.org", organization: "Example Medical University", country: "Japan", date: "2026-03", mla: 'Tanaka, Hiro, et al. "Example Biomarkers for Flare Prediction." <i>Example Clinical Medicine</i>, vol. 4, 2026, p. 19.', treatments: [["Low-dose aspirin", "Medicine"]] },
+    { firstName: "Laura", lastName: "Bennett", occupation: "Principal Investigator", organization: "Example Clinical Research Network", organizationAddress: "Boston, Massachusetts 02115", organizationPhone: "(555) 010-7700", country: "United States", date: "2025-12-01", trialDate: true, mla: '"Example Phase 2 Trial of a Targeted Therapy in Lupus." <i>ClinicalTrials.gov</i>, sponsored by Example Clinical Research Network, NCT00000000.', treatments: [["CAR-T cell therapy", "Treatment"]] },
+  ].map((r) => ({ ...r, example: true, continent: continentOf(r.country), ids: [], treatments: r.treatments.map(([name, kind]) => ({ name, kind, src: null })) }));
+
+  // ---------- UI helpers ----------
+  let running = false, ctl = null;
+  function setStep(id, state, count) {
+    const el = $("s-" + id); if (!el) return;
+    el.classList.remove("active", "done", "error");
+    if (state) el.classList.add(state);
+    if (count !== undefined) $("n-" + id).textContent = count;
+  }
+  const resetSteps = () => ["pubmed", "trials", "db"].forEach((s) => setStep(s, null, ""));
+  function notice(kind, html) { $("notice").innerHTML = html ? `<div class="notice ${kind}" role="status"><div>${html}</div></div>` : ""; }
+  const safeMLA = (s) => esc(s).replace(/&lt;i&gt;/g, "<i>").replace(/&lt;\/i&gt;/g, "</i>");
+  const initials = (r) => ((r.firstName || "").trim().charAt(0) + (r.lastName || "").trim().charAt(0)).toUpperCase() || "?";
+  const fullName = (r) => [r.firstName, r.lastName].filter(Boolean).join(" ");
+
+  function idLink(x) {
+    if (x.type === "pmid") return `<a href="https://pubmed.ncbi.nlm.nih.gov/${esc(x.id)}/" target="_blank" rel="noopener">PMID ${esc(x.id)}</a>`;
+    if (x.type === "doi") return `<a href="https://doi.org/${esc(x.id)}" target="_blank" rel="noopener">DOI</a>`;
+    if (x.type === "nct") return `<a href="https://clinicaltrials.gov/study/${esc(x.id)}" target="_blank" rel="noopener">${esc(x.id)}</a>`;
+    return "";
+  }
+  function treatList(r) {
+    const t = r.treatments || [];
+    if (!t.length) return `<div class="na">None named in this researcher's papers or trials</div>`;
+    return `<ul class="tx">${t.map((x) => `<li><span class="txName">${esc(x.name)}</span><span class="kind ${x.kind === "Medicine" ? "med" : "trt"}">${x.kind}</span><span class="txSrc">${x.src ? idLink(x.src) : ""}</span></li>`).join("")}</ul>
+      <div class="src">Named in the research. Not a recommendation.</div>`;
+  }
+  function profileLine(r) {
+    if (r.example) return `<span class="na">Profile search link appears here</span>`;
+    return `<a href="${esc(google(`"${fullName(r)}" ${r.organization || ""}`))}" target="_blank" rel="noopener">Find profile and photo</a><div class="src">Opens a web search in a new tab</div>`;
+  }
+  function orgContact(r, f) {
+    if (has(r[f])) return esc(r[f]);
+    return NA;
+  }
+  function card(r, i) {
+    const ids = (r.ids || []).map(idLink).join("");
+    const missingOrg = r.organization && !(has(r.organizationPhone) && has(r.organizationEmail)) && !r.example;
+    const orgSrc = r.orgSource ? `<div class="src">Organization contact from ${esc(r.orgSource)}</div>` : "";
+    const findOrg = missingOrg ? `<div class="src"><a href="${esc(google(`${r.organization} contact phone email`))}" target="_blank" rel="noopener">Find organization contact</a> (opens a web search)</div>` : "";
+    return `<article class="card">
+      <div class="cardHead"><span class="rank">${i + 1}</span><div style="min-width:0">
+        <h3 class="name">${esc(fullName(r)) || "Unnamed researcher"}</h3>
+        <div class="occ">${r.occupation ? esc(r.occupation) : NA}</div></div></div>
+      <div class="block"><div class="label">Researcher contact</div>
+        <div class="who"><div class="avatar" aria-hidden="true">${esc(initials(r))}</div><div class="whoText">${profileLine(r)}</div></div>
+        <dl><dt>Phone</dt><dd>${val(r.phone)}</dd><dt>Email</dt><dd>${val(r.email)}</dd></dl></div>
+      <div class="block"><div class="label">Work organization</div>
+        <div class="org">${val(r.organization)}${r.country ? `<span class="country">${esc(r.country)}</span>` : ""}</div>
+        <dl><dt>Address</dt><dd>${val(r.organizationAddress)}</dd><dt>Phone</dt><dd>${orgContact(r, "organizationPhone")}</dd><dt>Email</dt><dd>${orgContact(r, "organizationEmail")}</dd></dl>
+        ${orgSrc}${findOrg}</div>
+      <div class="block"><div class="label">Treatment and medicine</div>${treatList(r)}</div>
+      <div class="block pub"><div class="label">${r.trialDate ? "Most recent work (trial start)" : "Most recent publication"}</div>
+        <div class="date">${val(r.date)}</div>
+        <div class="mla">${r.mla ? safeMLA(r.mla) : NA}</div>
+        ${ids ? `<div class="ids">${ids}</div>` : ""}</div>
+    </article>`;
+  }
+
+  const reachable = (r) => has(r.email) || has(r.phone) || has(r.organization);
+  const visible = (r) => (r.treatments || []).length > 0 && reachable(r);
+  function groupShown(list) {
+    const vis = list.filter(visible);
+    return [...CONTINENTS, null].map((c) => ({ c, people: vis.filter((r) => (r.continent || null) === c).slice(0, PER_CONTINENT) })).filter((g) => g.people.length);
+  }
+  function render(list, meta) {
+    let html = "";
+    for (const { c, people } of groupShown(list)) {
+      html += `<section class="cont" aria-label="${esc(c || "Location not listed")}">
+        <h3 class="contHead">${esc(c || "Location not listed")}<span class="contN">${people.length} ${people.length === 1 ? "researcher" : "researchers"}</span></h3>
+        <div class="grid">${people.map((r, j) => card(r, j)).join("")}</div></section>`;
+    }
+    $("grid").innerHTML = html;
+    if (meta) { $("rtitle").textContent = meta.title; $("rmeta").textContent = meta.sub; }
+    $("dbCount").textContent = `· ${list.length} ${list.length === 1 ? "record" : "records"}`;
+    $("dbRows").innerHTML = list.map((r) => `<tr>
+      <td class="date">${val(r.date)}</td>
+      <td>${esc(fullName(r))}${r.occupation ? `<br><span class="na" style="font-style:normal">${esc(r.occupation)}</span>` : ""}</td>
+      <td>${val(r.organization)}</td><td>${val(r.country)}</td><td>${val(r.continent)}</td><td>${val(r.email)}</td><td>${val(r.phone)}</td>
+      <td>${(r.treatments || []).map((x) => `${esc(x.name)} (${x.kind.toLowerCase()})`).join(", ") || NA}</td>
+      <td>${r.mla ? safeMLA(r.mla) : NA}</td></tr>`).join("");
+  }
+  function subFor(list, q) {
+    const n = groupShown(list).reduce((a, g) => a + g.people.length, 0);
+    const vis = list.filter(visible).length, hidden = list.length - vis, over = vis - n;
+    return {
+      title: n ? `Researchers for “${q}”` : `No researchers with contact details and treatments for “${q}”`,
+      sub: `${n} shown · up to ${PER_CONTINENT} per continent, newest first${over ? ` · ${over} more over the limit` : ""}${hidden ? ` · ${hidden} hidden for missing contact details or treatments (see database below)` : ""}`,
+    };
+  }
+
+  // ---------- Dates and MLA ----------
+  const MON = ["Jan.", "Feb.", "Mar.", "Apr.", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.", "Dec."];
+  const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  const monthNum = (m) => (!m ? null : !isNaN(+m) ? +m : MONTHS[String(m).slice(0, 3).toLowerCase()] || null);
+  const isoDate = (pd) => {
+    if (!pd || !pd.year) return "";
+    const m = monthNum(pd.month);
+    return [pd.year, m ? String(m).padStart(2, "0") : null, m && pd.day ? String(pd.day).padStart(2, "0") : null].filter(Boolean).join("-");
+  };
+  const dateKey = (d) => {
+    const m = String(d || "").match(/(\d{4})(?:-(\d{1,2}))?(?:-(\d{1,2}))?/);
+    return m ? `${m[1]}-${String(m[2] || 0).padStart(2, "0")}-${String(m[3] || 0).padStart(2, "0")}` : "0000-00-00";
+  };
+  const byRecent = (a, b) => dateKey(b.date).localeCompare(dateKey(a.date));
+  const SMALL = new Set(["a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of", "on", "or", "the", "to", "with"]);
+  const titleCase = (s) => String(s || "").split(/\s+/).map((w, i) => (i > 0 && SMALL.has(w.toLowerCase())) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  function mlaArticle(a) {
+    const au = a.authors || [];
+    const first = au[0] ? `${au[0].last}${au[0].fore ? ", " + au[0].fore : ""}` : "";
+    let who = "";
+    if (au.length === 1) who = first + ". ";
+    else if (au.length === 2) who = `${first}, and ${[au[1].fore, au[1].last].filter(Boolean).join(" ")}. `;
+    else if (au.length > 2) who = `${first}, et al. `;
+    const parts = [];
+    if (a.journal) parts.push(`<i>${titleCase(a.journal)}</i>`);
+    if (a.volume) parts.push(`vol. ${a.volume}`);
+    if (a.issue) parts.push(`no. ${a.issue}`);
+    const m = monthNum(a.pd.month);
+    if (a.pd.year) parts.push([a.pd.day && m ? +a.pd.day : null, m ? MON[m - 1] : null, a.pd.year].filter(Boolean).join(" "));
+    if (a.pages) parts.push(/[-–]/.test(a.pages) ? `pp. ${a.pages}` : `p. ${a.pages}`);
+    return `${who}"${String(a.title || "").replace(/\.$/, "")}." ${parts.join(", ")}.${a.doi ? ` https://doi.org/${a.doi}.` : ""}`;
+  }
+  const mlaTrial = (t) => `"${String(t.title || "").replace(/\.$/, "")}." <i>ClinicalTrials.gov</i>${t.sponsor ? `, sponsored by ${t.sponsor}` : ""}, ${t.nct}, clinicaltrials.gov/study/${t.nct}.`;
+
+  // ---------- Parsing ----------
+  const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
+  const INST_RE = /universit|hospital|institut|cent(er|re)\b|college|school|clinic|foundation|laborator|academy|medical|health|research|faculty|national|pharma|\binc\b|\bltd\b|\bllc\b|gmbh|corporation|ministry|agency/i;
+  const DEPT_RE = /^(department|dept|division|section|unit|service|program|programme|laboratory of|lab of|graduate)\b/i;
+  function parseAffiliation(s) {
+    s = String(s || "").trim();
+    const email = ((s.match(EMAIL_RE) || [])[0] || "").replace(/\.$/, "") || null;
+    let clean = s.replace(/(electronic address:)?\s*[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\.?/gi, "").split(/;\s*/)[0].replace(/[.;,\s]+$/, "");
+    const parts = clean.split(/,\s*/).map((x) => x.trim()).filter(Boolean);
+    if (!parts.length) return { email, organization: null, address: null, country: null, dept: null };
+    const country = parts.length > 1 ? parts[parts.length - 1].replace(/\b\d{3,}\b/g, "").replace(/[.]+$/, "").trim() : null;
+    let orgIdx = parts.findIndex((p, i) => (i < parts.length - 1 || parts.length === 1) && INST_RE.test(p) && !DEPT_RE.test(p));
+    if (orgIdx < 0) orgIdx = parts.findIndex((p) => !DEPT_RE.test(p));
+    if (orgIdx < 0) orgIdx = 0;
+    const dept = parts.slice(0, orgIdx).filter((p) => DEPT_RE.test(p)).join(", ") || null;
+    const address = parts.slice(orgIdx + 1, parts.length > 1 ? parts.length - 1 : undefined).join(", ") || null;
+    return { email, organization: parts[orgIdx] || null, address, country: country || null, dept };
+  }
+
+  function parseArticle(el) {
+    const t = (sel, root = el) => { const n = root.querySelector(sel); return n ? n.textContent.trim() : ""; };
+    const pdEl = el.querySelector("JournalIssue > PubDate");
+    let pd = { year: pdEl ? t("Year", pdEl) : "", month: pdEl ? t("Month", pdEl) : "", day: pdEl ? t("Day", pdEl) : "" };
+    if (!pd.year && pdEl) { const md = t("MedlineDate", pdEl); const y = md.match(/\d{4}/); if (y) pd = { year: y[0], month: (md.match(/\d{4}\s+([A-Za-z]{3})/) || [])[1] || "", day: "" }; }
+    if (!pd.year) { const ad = el.querySelector("ArticleDate"); if (ad) pd = { year: t("Year", ad), month: t("Month", ad), day: t("Day", ad) }; }
+    const doiEl = el.querySelector('ArticleIdList > ArticleId[IdType="doi"]') || el.querySelector('ELocationID[EIdType="doi"]');
+    const authors = [...el.querySelectorAll("AuthorList > Author")].filter((a) => a.querySelector("LastName")).map((a) => ({
+      last: t("LastName", a), fore: t("ForeName", a) || t("Initials", a),
+      affs: [...a.querySelectorAll("AffiliationInfo > Affiliation")].map((x) => x.textContent.trim()),
+    }));
+    // Medicines: MeSH headings PubMed indexers marked with the "therapeutic use" qualifier.
+    const meds = [];
+    for (const mh of el.querySelectorAll("MeshHeadingList > MeshHeading")) {
+      const quals = [...mh.querySelectorAll("QualifierName")].map((q) => q.textContent.trim().toLowerCase());
+      if (quals.includes("therapeutic use")) meds.push(t("DescriptorName", mh));
+    }
+    return {
+      pmid: t("MedlineCitation > PMID"), title: t("ArticleTitle"), journal: t("Journal > Title"),
+      volume: t("JournalIssue > Volume"), issue: t("JournalIssue > Issue"), pages: t("Pagination > MedlinePgn"),
+      pd, doi: doiEl ? doiEl.textContent.trim() : "", authors, meds: [...new Set(meds.filter(Boolean))],
+    };
+  }
+
+  const SKIP_IV = /placebo|sham|standard of care|usual care|no intervention|observation only|questionnaire|survey/i;
+  const MED_TYPES = new Set(["DRUG", "BIOLOGICAL", "COMBINATION_PRODUCT"]);
+  const TRT_TYPES = new Set(["PROCEDURE", "DEVICE", "BEHAVIORAL", "RADIATION", "GENETIC", "DIETARY_SUPPLEMENT"]);
+  function parseStudy(s) {
+    const p = s.protocolSection || {};
+    const id = p.identificationModule || {}, st = p.statusModule || {}, cl = p.contactsLocationsModule || {};
+    const ivs = ((p.armsInterventionsModule || {}).interventions || [])
+      .filter((i) => i && i.name && !SKIP_IV.test(i.name) && (MED_TYPES.has(i.type) || TRT_TYPES.has(i.type)))
+      .map((i) => ({ name: i.name, kind: MED_TYPES.has(i.type) ? "Medicine" : "Treatment" }));
+    return {
+      nct: id.nctId, title: id.briefTitle || id.officialTitle, date: (st.startDateStruct || {}).date || "",
+      sponsor: ((p.sponsorCollaboratorsModule || {}).leadSponsor || {}).name || "",
+      ivs, officials: cl.overallOfficials || [], central: cl.centralContacts || [], locations: cl.locations || [],
+    };
+  }
+  const ROLE = { PRINCIPAL_INVESTIGATOR: "Principal Investigator", STUDY_DIRECTOR: "Study Director", STUDY_CHAIR: "Study Chair" };
+  function splitName(raw) {
+    const [namePart, ...deg] = String(raw || "").split(",");
+    const words = namePart.replace(/^(dr\.?|prof\.?|professor)\s+/i, "").trim().split(/\s+/);
+    return { firstName: words.slice(0, -1).join(" "), lastName: words[words.length - 1] || "", degrees: deg.join(",").trim() };
+  }
+  const phoneOf = (c) => (c && c.phone ? c.phone + (c.phoneExt ? ` ext. ${c.phoneExt}` : "") : null);
+
+  // ---------- Fetching ----------
+  async function getOK(url, signal, kind) {
+    const r = await fetch(url, { signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return kind === "json" ? r.json() : r.text();
+  }
+  async function fetchPubMed(q, signal) {
+    setStep("pubmed", "active");
+    const s = await getOK(`${EUTILS}esearch.fcgi?db=pubmed&retmode=json&sort=pub_date&retmax=40&tool=fanale&term=${encodeURIComponent(q)}`, signal, "json");
+    const ids = ((s && s.esearchresult) || {}).idlist || [];
+    if (!ids.length) { setStep("pubmed", "done", "0 articles"); return []; }
+    const xml = await getOK(`${EUTILS}efetch.fcgi?db=pubmed&retmode=xml&tool=fanale&id=${ids.join(",")}`, signal, "text");
+    const doc = new DOMParser().parseFromString(xml, "text/xml");
+    const arts = [...doc.querySelectorAll("PubmedArticle")].map(parseArticle);
+    setStep("pubmed", "done", `${arts.length} articles`);
+    return arts;
+  }
+  async function fetchTrials(q, signal) {
+    setStep("trials", "active");
+    const status = "RECRUITING,NOT_YET_RECRUITING,ACTIVE_NOT_RECRUITING,ENROLLING_BY_INVITATION";
+    const base = `${CTGOV}?format=json&pageSize=25&query.cond=${encodeURIComponent(q)}&filter.overallStatus=${status}`;
+    const fields = "&fields=" + encodeURIComponent(["IdentificationModule", "StatusModule", "SponsorCollaboratorsModule", "ArmsInterventionsModule", "ContactsLocationsModule"].join(","));
+    // Try the compact request first, then simpler forms if the API rejects a parameter.
+    const noStatus = `${CTGOV}?format=json&pageSize=25&query.cond=${encodeURIComponent(q)}`;
+    let data, lastErr;
+    for (const url of [base + fields, base, noStatus]) {
+      try { data = await getOK(url, signal, "json"); break; }
+      catch (e) { if (e.name === "AbortError") throw e; lastErr = e; }
+    }
+    if (!data) throw lastErr;
+    const trials = (data.studies || []).map(parseStudy).filter((t) => t.nct);
+    setStep("trials", "done", `${trials.length} trials`);
+    return trials;
+  }
+
+  // ---------- Building the researcher database ----------
+  function build(arts, trials) {
+    const people = new Map();
+    const keyOf = (f, l) => norm(f) + "|" + norm(l);
+    const get = (f, l) => {
+      const k = keyOf(f, l);
+      if (!people.has(k)) people.set(k, { firstName: f, lastName: l, items: [], treatments: [], seenTx: new Set() });
+      return people.get(k);
+    };
+    const fill = (r, f, v) => { if (!has(r[f]) && has(v)) r[f] = String(v).trim(); };
+    const addTx = (r, name, kind, src) => {
+      const k = norm(name); if (!k || r.seenTx.has(k) || r.treatments.length >= 5) return;
+      r.seenTx.add(k); r.treatments.push({ name, kind, src });
+    };
+
+    for (const a of arts) {
+      const au = a.authors;
+      const picks = au.length > 1 ? [au[0], au[au.length - 1]] : au;
+      for (const x of picks) {
+        if (!x.last) continue;
+        const r = get(x.fore, x.last);
+        const aff = parseAffiliation(x.affs[0]);
+        fill(r, "email", aff.email); fill(r, "organization", aff.organization); fill(r, "organizationAddress", aff.address);
+        fill(r, "country", aff.country); fill(r, "occupation", aff.dept);
+        r.items.push({ date: isoDate(a.pd), mla: mlaArticle(a), ids: [{ type: "pmid", id: a.pmid }, ...(a.doi ? [{ type: "doi", id: a.doi }] : [])] });
+        for (const m of a.meds) addTx(r, m, "Medicine", { type: "pmid", id: a.pmid });
+      }
+    }
+    for (const t of trials) {
+      const contacts = [...t.central, ...t.locations.flatMap((l) => l.contacts || [])];
+      for (const o of t.officials) {
+        const n = splitName(o.name);
+        if (!n.lastName) continue;
+        const r = get(n.firstName, n.lastName);
+        fill(r, "occupation", [n.degrees, ROLE[o.role]].filter(Boolean).join(", "));
+        const mine = contacts.find((c) => norm(c.name).includes(norm(n.lastName)));
+        if (mine) { fill(r, "phone", phoneOf(mine)); fill(r, "email", mine.email); }
+        fill(r, "organization", o.affiliation);
+        const aff = norm(o.affiliation);
+        const loc = t.locations.find((l) => aff && (norm(l.facility).includes(aff) || aff.includes(norm(l.facility)))) || (t.locations.length === 1 ? t.locations[0] : null);
+        if (loc) {
+          fill(r, "organizationAddress", [loc.city, [loc.state, loc.zip].filter(Boolean).join(" ")].filter(Boolean).join(", "));
+          fill(r, "country", loc.country);
+          const site = (loc.contacts || []).find((c) => !norm(c.name).includes(norm(n.lastName)) && (c.phone || c.email));
+          if (site && !has(r.organizationPhone) && !has(r.organizationEmail)) {
+            r.organizationPhone = phoneOf(site); r.organizationEmail = site.email || null;
+            r.orgSource = `the ClinicalTrials.gov site contact for ${t.nct}`;
+          }
+        }
+        r.items.push({ date: t.date, trialDate: true, mla: mlaTrial(t), ids: [{ type: "nct", id: t.nct }] });
+        for (const iv of t.ivs) addTx(r, iv.name, iv.kind, { type: "nct", id: t.nct });
+      }
+    }
+    const list = [];
+    for (const r of people.values()) {
+      if (!r.items.length) continue;
+      r.items.sort(byRecent);
+      const top = r.items[0];
+      Object.assign(r, { date: top.date, trialDate: !!top.trialDate, mla: top.mla, ids: r.items.flatMap((x) => x.ids).slice(0, 4) });
+      r.continent = continentOf(r.country);
+      delete r.seenTx;
+      list.push(r);
+    }
+    return list.sort(byRecent);
+  }
+
+  // ---------- Search ----------
+  async function runSearch(q) {
+    running = true; $("go").disabled = true; $("stop").hidden = false;
+    resetSteps();
+    notice("", "<b>Searching.</b> This usually takes a few seconds.");
+    $("rtitle").textContent = `Searching for “${q}”`; $("rmeta").textContent = "";
+    ctl = new AbortController();
+    const problems = [];
+    try {
+      const [pm, ct] = await Promise.allSettled([fetchPubMed(q, ctl.signal), fetchTrials(q, ctl.signal)]);
+      if ([pm, ct].some((x) => x.status === "rejected" && x.reason && x.reason.name === "AbortError")) throw { name: "AbortError" };
+      if (pm.status === "rejected") { setStep("pubmed", "error"); problems.push("<b>PubMed</b> could not be reached. Results below come from ClinicalTrials.gov only. Try again in a moment."); }
+      if (ct.status === "rejected") { setStep("trials", "error"); problems.push("<b>ClinicalTrials.gov</b> could not be reached. Results below come from PubMed only. Try again in a moment."); }
+      const arts = pm.status === "fulfilled" ? pm.value : [], trials = ct.status === "fulfilled" ? ct.value : [];
+      if (pm.status === "rejected" && ct.status === "rejected") {
+        notice("err", "Neither PubMed nor ClinicalTrials.gov could be reached. Check your connection and try again.");
+        render([], { title: "No results", sub: "" });
+        return;
+      }
+      setStep("db", "active");
+      const list = build(arts, trials);
+      setStep("db", "done", `${list.length} researchers`);
+      render(list, list.length ? subFor(list, q) : { title: `No researchers found for “${q}”`, sub: "Try a broader or alternate name for the diagnosis." });
+      notice(problems.length ? "err" : "", problems.join("<br>"));
+    } catch (e) {
+      if (e && e.name === "AbortError") { notice("", "Search stopped."); ["pubmed", "trials", "db"].forEach((s) => { if ($("s-" + s).classList.contains("active")) setStep(s, null); }); }
+      else { notice("err", "Something went wrong while building the results. Try again."); }
+    } finally {
+      running = false; $("go").disabled = false; $("stop").hidden = true;
+    }
+  }
+
+  // ---------- Wire up ----------
+  $("form").addEventListener("submit", (e) => { e.preventDefault(); const q = $("q").value.trim(); if (q && !running) runSearch(q); });
+  $("stop").addEventListener("click", () => ctl && ctl.abort());
+  document.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.q; if (!running) runSearch(b.dataset.q); }));
+
+  notice("example", "<b>Example layout.</b> These five researchers are fictional, to show how results look, grouped by continent. Search a diagnosis to load real data.");
+  render([...EXAMPLE].sort(byRecent), { title: "Researchers for “lupus” (example)", sub: "5 shown · up to 10 per continent, newest first" });
+})();
