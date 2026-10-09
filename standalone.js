@@ -9,9 +9,11 @@
 
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const NA = '<span class="na">Not listed in source</span>';
+  const I = window.FanaleI18n;
+  const tr = (k, v) => I.t(k, v);
+  const naHtml = () => `<span class="na">${esc(tr("na"))}</span>`;
   const has = (s) => s != null && String(s).trim() !== "";
-  const val = (s) => (has(s) ? esc(String(s).trim()) : NA);
+  const val = (s) => (has(s) ? esc(String(s).trim()) : naHtml());
   const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
   const google = (q) => "https://www.google.com/search?q=" + encodeURIComponent(q);
 
@@ -43,14 +45,23 @@
 
   // ---------- UI helpers ----------
   let running = false, ctl = null;
+  // Step counts are kept as {key, vars} so they can be redrawn when the language changes.
+  const stepCounts = {};
+  const countText = (c) => (!c ? "" : typeof c === "string" ? c : tr(c.k, c.v));
   function setStep(id, state, count) {
     const el = $("s-" + id); if (!el) return;
     el.classList.remove("active", "done", "error");
     if (state) el.classList.add(state);
-    if (count !== undefined) $("n-" + id).textContent = count;
+    if (count !== undefined) { stepCounts[id] = count; $("n-" + id).textContent = countText(count); }
   }
   const resetSteps = () => ["pubmed", "trials", "db", "org"].forEach((s) => setStep(s, null, ""));
-  function notice(kind, html) { $("notice").innerHTML = html ? `<div class="notice ${kind}" role="status"><div>${html}</div></div>` : ""; }
+  // Notices are kept as translation keys so they can be redrawn in another language.
+  let lastNotice = { kind: "", keys: [] };
+  function notice(kind, keys) {
+    lastNotice = { kind, keys: (Array.isArray(keys) ? keys : keys ? [keys] : []) };
+    const html = lastNotice.keys.map((k) => (typeof k === "string" ? tr(k) : tr(k.k, k.v))).join("<br>");
+    $("notice").innerHTML = html ? `<div class="notice ${kind}" role="status"><div>${html}</div></div>` : "";
+  }
   const safeMLA = (s) => esc(s).replace(/&lt;i&gt;/g, "<i>").replace(/&lt;\/i&gt;/g, "</i>");
   const initials = (r) => ((r.firstName || "").trim().charAt(0) + (r.lastName || "").trim().charAt(0)).toUpperCase() || "?";
   const fullName = (r) => [r.firstName, r.lastName].filter(Boolean).join(" ");
@@ -63,40 +74,40 @@
   }
   function treatList(r) {
     const t = r.treatments || [];
-    if (!t.length) return `<div class="na">None named in this researcher's papers or trials</div>`;
-    return `<ul class="tx">${t.map((x) => `<li><span class="txName">${esc(x.name)}</span><span class="kind ${x.kind === "Medicine" ? "med" : "trt"}">${x.kind}</span><span class="txSrc">${x.src ? idLink(x.src) : ""}</span></li>`).join("")}</ul>
-      <div class="src">Named in the research. Not a recommendation.</div>`;
+    if (!t.length) return `<div class="na">${esc(tr("noneNamed"))}</div>`;
+    return `<ul class="tx">${t.map((x) => `<li><span class="txName">${esc(x.name)}</span><span class="kind ${x.kind === "Medicine" ? "med" : "trt"}">${esc(tr(x.kind === "Medicine" ? "medicine" : "treatment"))}</span><span class="txSrc">${x.src ? idLink(x.src) : ""}</span></li>`).join("")}</ul>
+      <div class="src">${esc(tr("notRec"))}</div>`;
   }
   function profileLine(r) {
-    if (r.example) return `<span class="na">Profile search link appears here</span>`;
-    return `<a href="${esc(google(`"${fullName(r)}" ${r.organization || ""}`))}" target="_blank" rel="noopener">Find profile and photo</a><div class="src">Opens a web search in a new tab</div>`;
+    if (r.example) return `<span class="na">${esc(tr("profileExample"))}</span>`;
+    return `<a href="${esc(google(`"${fullName(r)}" ${r.organization || ""}`))}" target="_blank" rel="noopener">${esc(tr("findProfile"))}</a><div class="src">${esc(tr("opensTab"))}</div>`;
   }
   function orgContact(r, f) {
     if (has(r[f])) return esc(r[f]);
-    return r.orgPending ? '<span class="pending">Looking up…</span>' : NA;
+    return r.orgPending ? `<span class="pending">${esc(tr("lookingUp"))}</span>` : naHtml();
   }
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
   function card(r, i) {
     const ids = (r.ids || []).map(idLink).join("");
     const missingOrg = r.organization && !(has(r.organizationPhone) && has(r.organizationEmail)) && !r.example && !r.orgPending;
-    const orgSrc = r.orgSource ? `<div class="src">Organization contact from ${esc(r.orgSource)}</div>` : "";
-    const site = r.website ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">${esc(hostOf(r.website))}</a>` : (r.orgPending ? '<span class="pending">Looking up…</span>' : NA);
-    const findOrg = missingOrg ? `<div class="src"><a href="${esc(google(`${r.organization} contact phone email`))}" target="_blank" rel="noopener">Find organization contact</a> (opens a web search)</div>` : "";
+    const orgSrc = r.orgSource ? `<div class="src">${esc(r.orgSource.kind === "trial" ? tr("orgFromTrial", { nct: r.orgSource.nct }) : tr("orgFromWikidata", { name: r.orgSource.name }))}</div>` : "";
+    const site = r.website ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">${esc(hostOf(r.website))}</a>` : (r.orgPending ? `<span class="pending">${esc(tr("lookingUp"))}</span>` : naHtml());
+    const findOrg = missingOrg ? `<div class="src"><a href="${esc(google(`${r.organization} contact phone email`))}" target="_blank" rel="noopener">${esc(tr("findOrg"))}</a> ${esc(tr("opensSearch"))}</div>` : "";
     return `<article class="card">
       <div class="cardHead"><span class="rank">${i + 1}</span><div style="min-width:0">
-        <h3 class="name">${esc(fullName(r)) || "Unnamed researcher"}</h3>
-        <div class="occ">${r.occupation ? esc(r.occupation) : NA}</div></div></div>
-      <div class="block"><div class="label">Researcher contact</div>
+        <h3 class="name">${esc(fullName(r)) || esc(tr("unnamed"))}</h3>
+        <div class="occ">${r.occupation ? esc(r.occupation) : naHtml()}</div></div></div>
+      <div class="block"><div class="label">${esc(tr("researcherContact"))}</div>
         <div class="who"><div class="avatar" aria-hidden="true">${esc(initials(r))}</div><div class="whoText">${profileLine(r)}</div></div>
-        <dl><dt>Phone</dt><dd>${val(r.phone)}</dd><dt>Email</dt><dd>${val(r.email)}</dd></dl></div>
-      <div class="block"><div class="label">Work organization</div>
-        <div class="org">${val(r.organization)}${r.country ? `<span class="country">${esc(r.country)}</span>` : ""}</div>${r.rorName ? `<div class="src">Matched to ${esc(r.rorName)} in the Research Organization Registry</div>` : ""}
-        <dl><dt>Address</dt><dd>${val(r.organizationAddress)}</dd><dt>Phone</dt><dd>${orgContact(r, "organizationPhone")}</dd><dt>Email</dt><dd>${orgContact(r, "organizationEmail")}</dd><dt>Website</dt><dd>${site}</dd></dl>
+        <dl><dt>${esc(tr("phone"))}</dt><dd>${val(r.phone)}</dd><dt>${esc(tr("email"))}</dt><dd>${val(r.email)}</dd></dl></div>
+      <div class="block"><div class="label">${esc(tr("workOrg"))}</div>
+        <div class="org">${val(r.organization)}${r.country ? `<span class="country">${esc(r.country)}</span>` : ""}</div>${r.rorName ? `<div class="src">${esc(tr("matchedRor", { name: r.rorName }))}</div>` : ""}
+        <dl><dt>${esc(tr("address"))}</dt><dd>${val(r.organizationAddress)}</dd><dt>${esc(tr("phone"))}</dt><dd>${orgContact(r, "organizationPhone")}</dd><dt>${esc(tr("email"))}</dt><dd>${orgContact(r, "organizationEmail")}</dd><dt>${esc(tr("website"))}</dt><dd>${site}</dd></dl>
         ${orgSrc}${findOrg}</div>
-      <div class="block"><div class="label">Treatment and medicine</div>${treatList(r)}</div>
-      <div class="block pub"><div class="label">${r.trialDate ? "Most recent work (trial start)" : "Most recent publication"}</div>
+      <div class="block"><div class="label">${esc(tr("txHead"))}</div>${treatList(r)}</div>
+      <div class="block pub"><div class="label">${esc(tr(r.trialDate ? "recentTrial" : "recentPub"))}</div>
         <div class="date">${val(r.date)}</div>
-        <div class="mla">${r.mla ? safeMLA(r.mla) : NA}</div>
+        <div class="mla">${r.mla ? safeMLA(r.mla) : naHtml()}</div>
         ${ids ? `<div class="ids">${ids}</div>` : ""}</div>
     </article>`;
   }
@@ -107,29 +118,33 @@
     const vis = list.filter(visible);
     return [...CONTINENTS, null].map((c) => ({ c, people: vis.filter((r) => (r.continent || null) === c).slice(0, PER_CONTINENT) })).filter((g) => g.people.length);
   }
-  function render(list, meta) {
+  let lastList = [], headFn = null;
+  function setHead(fn) { headFn = fn; const m = fn(); $("rtitle").textContent = m.title; $("rmeta").textContent = m.sub || ""; }
+  function render(list, metaFn) {
+    lastList = list;
     let html = "";
     for (const { c, people } of groupShown(list)) {
-      html += `<section class="cont" aria-label="${esc(c || "Location not listed")}">
-        <h3 class="contHead">${esc(c || "Location not listed")}<span class="contN">${people.length} ${people.length === 1 ? "researcher" : "researchers"}</span></h3>
+      const cName = c ? tr(c) : tr("locNotListed");
+      html += `<section class="cont" aria-label="${esc(cName)}">
+        <h3 class="contHead">${esc(cName)}<span class="contN">${esc(I.plural(people.length, "researcher1", "researcherN"))}</span></h3>
         <div class="grid">${people.map((r, j) => card(r, j)).join("")}</div></section>`;
     }
     $("grid").innerHTML = html;
-    if (meta) { $("rtitle").textContent = meta.title; $("rmeta").textContent = meta.sub; }
-    $("dbCount").textContent = `· ${list.length} ${list.length === 1 ? "record" : "records"}`;
+    if (metaFn) setHead(metaFn);
+    $("dbCount").textContent = "· " + I.plural(list.length, "record1", "recordN");
     $("dbRows").innerHTML = list.map((r) => `<tr>
       <td class="date">${val(r.date)}</td>
       <td>${esc(fullName(r))}${r.occupation ? `<br><span class="na" style="font-style:normal">${esc(r.occupation)}</span>` : ""}</td>
-      <td>${val(r.organization)}</td><td>${val(r.country)}</td><td>${val(r.continent)}</td><td>${val(r.email)}</td><td>${val(r.phone)}</td>
-      <td>${(r.treatments || []).map((x) => `${esc(x.name)} (${x.kind.toLowerCase()})`).join(", ") || NA}</td>
-      <td>${r.mla ? safeMLA(r.mla) : NA}</td></tr>`).join("");
+      <td>${val(r.organization)}</td><td>${val(r.country)}</td><td>${r.continent ? esc(tr(r.continent)) : naHtml()}</td><td>${val(r.email)}</td><td>${val(r.phone)}</td>
+      <td>${(r.treatments || []).map((x) => `${esc(x.name)} (${esc(tr(x.kind === "Medicine" ? "medicine" : "treatment").toLowerCase())})`).join(", ") || naHtml()}</td>
+      <td>${r.mla ? safeMLA(r.mla) : naHtml()}</td></tr>`).join("");
   }
   function subFor(list, q) {
     const n = groupShown(list).reduce((a, g) => a + g.people.length, 0);
     const vis = list.filter(visible).length, hidden = list.length - vis, over = vis - n;
     return {
-      title: n ? `Researchers for “${q}”` : `No researchers with contact details and treatments for “${q}”`,
-      sub: `${n} shown · up to ${PER_CONTINENT} per continent, newest first${over ? ` · ${over} more over the limit` : ""}${hidden ? ` · ${hidden} hidden for missing contact details or treatments (see database below)` : ""}`,
+      title: tr(n ? "resultsFor" : "noneWithContact", { q }),
+      sub: tr("shownSub", { n, max: PER_CONTINENT }) + (over ? tr("overLimit", { n: over }) : "") + (hidden ? tr("hiddenSub", { n: hidden }) : ""),
     };
   }
 
@@ -243,11 +258,11 @@
     setStep("pubmed", "active");
     const s = await getOK(`${EUTILS}esearch.fcgi?db=pubmed&retmode=json&sort=pub_date&retmax=40&tool=fanale&term=${encodeURIComponent(q)}`, signal, "json");
     const ids = ((s && s.esearchresult) || {}).idlist || [];
-    if (!ids.length) { setStep("pubmed", "done", "0 articles"); return []; }
+    if (!ids.length) { setStep("pubmed", "done", { k: "nArticles", v: { n: 0 } }); return []; }
     const xml = await getOK(`${EUTILS}efetch.fcgi?db=pubmed&retmode=xml&tool=fanale&id=${ids.join(",")}`, signal, "text");
     const doc = new DOMParser().parseFromString(xml, "text/xml");
     const arts = [...doc.querySelectorAll("PubmedArticle")].map(parseArticle);
-    setStep("pubmed", "done", `${arts.length} articles`);
+    setStep("pubmed", "done", { k: "nArticles", v: { n: arts.length } });
     return arts;
   }
   async function fetchTrials(q, signal) {
@@ -264,7 +279,7 @@
     }
     if (!data) throw lastErr;
     const trials = (data.studies || []).map(parseStudy).filter((t) => t.nct);
-    setStep("trials", "done", `${trials.length} trials`);
+    setStep("trials", "done", { k: "nTrials", v: { n: trials.length } });
     return trials;
   }
 
@@ -317,7 +332,7 @@
           const site = (loc.contacts || []).find((c) => !norm(c.name).includes(norm(n.lastName)) && (c.phone || c.email));
           if (site && !has(r.organizationPhone) && !has(r.organizationEmail)) {
             r.organizationPhone = phoneOf(site); r.organizationEmail = site.email || null;
-            r.orgSource = `the ClinicalTrials.gov site contact for ${t.nct}`;
+            r.orgSource = { kind: "trial", nct: t.nct };
           }
         }
         r.items.push({ date: t.date, trialDate: true, mla: mlaTrial(t), ids: [{ type: "nct", id: t.nct }] });
@@ -379,7 +394,7 @@
           };
         }
       } catch (e) { if (e.name === "AbortError") throw e; failures++; }
-      done++; setStep("org", "active", `${done} of ${jobs.length}`);
+      done++; setStep("org", "active", { k: "orgProgress", v: { done, total: jobs.length } });
     });
     // 2) Wikidata contact details for the matched organizations, in batches of 50.
     const qids = [...new Set(jobs.map((j) => j.ror && j.ror.qid).filter(Boolean))];
@@ -402,7 +417,7 @@
         if (!r.website) r.website = d.website || w.website || null;
         if (!has(r.organizationPhone) && has(w.phone)) { r.organizationPhone = w.phone; phones++; }
         if (!has(r.organizationEmail) && has(w.email)) r.organizationEmail = w.email;
-        if ((has(w.phone) || has(w.email)) && !r.orgSource) r.orgSource = "Wikidata, for " + (d.name || r.organization);
+        if ((has(w.phone) || has(w.email)) && !r.orgSource) r.orgSource = { kind: "wikidata", name: d.name || r.organization };
         if (!has(r.organizationAddress) && has(w.street)) r.organizationAddress = w.street;
         if (!has(r.organizationAddress) && d.city) r.organizationAddress = d.city;
         if (!has(r.country) && d.country) r.country = d.country;
@@ -417,38 +432,39 @@
   async function runSearch(q) {
     running = true; $("go").disabled = true; $("stop").hidden = false;
     resetSteps();
-    notice("", "<b>Searching.</b> This usually takes a few seconds.");
-    $("rtitle").textContent = `Searching for “${q}”`; $("rmeta").textContent = "";
+    notice("", "searching");
+    setHead(() => ({ title: tr("searchingFor", { q }), sub: "" }));
     ctl = new AbortController();
     const problems = [];
     try {
       const [pm, ct] = await Promise.allSettled([fetchPubMed(q, ctl.signal), fetchTrials(q, ctl.signal)]);
       if ([pm, ct].some((x) => x.status === "rejected" && x.reason && x.reason.name === "AbortError")) throw { name: "AbortError" };
-      if (pm.status === "rejected") { setStep("pubmed", "error"); problems.push("<b>PubMed</b> could not be reached. Results below come from ClinicalTrials.gov only. Try again in a moment."); }
-      if (ct.status === "rejected") { setStep("trials", "error"); problems.push("<b>ClinicalTrials.gov</b> could not be reached. Results below come from PubMed only. Try again in a moment."); }
+      if (pm.status === "rejected") { setStep("pubmed", "error"); problems.push("pubmedDown"); }
+      if (ct.status === "rejected") { setStep("trials", "error"); problems.push("trialsDown"); }
       const arts = pm.status === "fulfilled" ? pm.value : [], trials = ct.status === "fulfilled" ? ct.value : [];
       if (pm.status === "rejected" && ct.status === "rejected") {
-        notice("err", "Neither PubMed nor ClinicalTrials.gov could be reached. Check your connection and try again.");
-        render([], { title: "No results", sub: "" });
+        notice("err", "bothDown");
+        render([], () => ({ title: tr("noResults"), sub: "" }));
         return;
       }
       setStep("db", "active");
       const list = build(arts, trials);
-      setStep("db", "done", `${list.length} researchers`);
-      render(list, list.length ? subFor(list, q) : { title: `No researchers found for “${q}”`, sub: "Try a broader or alternate name for the diagnosis." });
-      notice(problems.length ? "err" : "", problems.join("<br>"));
+      setStep("db", "done", { k: "nResearchers", v: { n: list.length } });
+      const metaFn = list.length ? () => subFor(list, q) : () => ({ title: tr("noneFound", { q }), sub: tr("tryBroader") });
+      render(list, metaFn);
+      notice(problems.length ? "err" : "", problems);
       if (list.length) {
         setStep("org", "active");
-        const o = await orgLookup(list, ctl.signal, () => render(list, subFor(list, q)));
+        const o = await orgLookup(list, ctl.signal, () => render(list, metaFn));
         list.forEach((r) => { r.orgPending = false; });
-        if (o.failed) { setStep("org", "error"); problems.push("The organization directory (ROR) could not be reached, so official websites and organization phone numbers are missing. The rest of the results are complete."); }
-        else setStep("org", "done", `${o.matched} matched · ${o.phones} phones`);
-        render(list, subFor(list, q));
-        notice(problems.length ? "err" : "", problems.join("<br>"));
+        if (o.failed) { setStep("org", "error"); problems.push("rorDown"); }
+        else setStep("org", "done", { k: "orgDone", v: { m: o.matched, p: o.phones } });
+        render(list, metaFn);
+        notice(problems.length ? "err" : "", problems);
       }
     } catch (e) {
-      if (e && e.name === "AbortError") { notice("", "Search stopped."); ["pubmed", "trials", "db", "org"].forEach((s) => { if ($("s-" + s).classList.contains("active")) setStep(s, null); }); }
-      else { notice("err", "Something went wrong while building the results. Try again."); }
+      if (e && e.name === "AbortError") { notice("", "stopped"); ["pubmed", "trials", "db", "org"].forEach((s) => { if ($("s-" + s).classList.contains("active")) setStep(s, null); }); }
+      else { notice("err", "wentWrong"); }
     } finally {
       running = false; $("go").disabled = false; $("stop").hidden = true;
     }
@@ -459,6 +475,20 @@
   $("stop").addEventListener("click", () => ctl && ctl.abort());
   document.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.q; if (!running) runSearch(b.dataset.q); }));
 
-  notice("example", "<b>Example layout.</b> These five researchers are fictional, to show how results look, grouped by continent. Search a diagnosis to load real data.");
-  render([...EXAMPLE].sort(byRecent), { title: "Researchers for “lupus” (example)", sub: "5 shown · up to 10 per continent, newest first" });
+  // Language menu: English by default; switching redraws everything already on the page.
+  const langSel = $("lang");
+  if (langSel) {
+    langSel.innerHTML = I.LANGS.map((l) => `<option value="${l.code}"${l.code === I.getLang() ? " selected" : ""}>${esc(l.name)}</option>`).join("");
+    langSel.addEventListener("change", () => I.setLang(langSel.value));
+  }
+  I.onChange(() => {
+    if (langSel) langSel.value = I.getLang();
+    Object.entries(stepCounts).forEach(([id, c]) => { $("n-" + id).textContent = countText(c); });
+    notice(lastNotice.kind, lastNotice.keys);
+    render(lastList, headFn);
+  });
+  I.applyStatic();
+
+  notice("example", "exampleNotice");
+  render([...EXAMPLE].sort(byRecent), () => ({ title: tr("exampleTitle"), sub: tr("shownSub", { n: 5, max: PER_CONTINENT }) }));
 })();

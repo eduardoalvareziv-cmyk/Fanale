@@ -62,6 +62,8 @@ Diagnosis ──► PubMed (40 newest articles + metadata)        ┐
 
 ### Website version (no account needed)
 
+**Languages:** English (default), Español, Français, Português, Deutsch, Русский, 中文, हिन्दी, 日本語, العربية (right-to-left) and Kiswahili, covering every continent. Pick one from the globe menu in the header, or link straight to one with `?lang=` (for example `?lang=es`). The choice is remembered in the visitor's browser. The interface is translated. Research data (names, titles, affiliations, MLA citations) stays as published, and searches work best with the English medical name, which the page explains in each language. Translations are in `i18n.js` (English, Spanish, French, Portuguese) and `i18n-more.js` (the rest). They were machine-drafted, so native-speaker review is welcome.
+
 Open https://eduardoalvareziv-cmyk.github.io/Fanale/, type a diagnosis (for example *Hermansky-Pudlak syndrome* or *systemic lupus erythematosus*) and click **Search**. Results take a few seconds. The page runs entirely in the visitor's browser and calls:
 
 - **PubMed E-utilities:** `esearch` for the 40 newest articles, and `efetch` for titles, authors, affiliations and MeSH indexing.

@@ -138,6 +138,17 @@ td.date{white-space:nowrap}
 .btn-small{min-height:36px;padding:0 14px;font-size:13.5px}
 .credit{margin-top:8px;padding-top:12px;border-top:1px solid var(--gold);font-family:var(--f-display);font-size:14px;color:var(--ink)}
 .credit b{font-weight:400;color:var(--beacon-ink)}
+.topRight{display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:flex-end}
+.lang{display:inline-flex;align-items:center;gap:6px;color:var(--ivory);border:1px solid var(--gold);border-radius:999px;padding:4px 10px 4px 10px}
+.lang select{background:transparent;color:var(--ivory);border:0;font:600 13.5px var(--f-ui);cursor:pointer;padding:2px 0}
+.lang select option{color:#102F27;background:#F7F3E9}
+.lang:focus-within{outline:3px solid var(--gold);outline-offset:2px}
+.hint{margin:0;font-size:13.5px;color:var(--muted);max-width:70ch}
+dd,.mla,.org,.name,.occ,td,.txName,.date{unicode-bidi:plaintext}
+[dir="rtl"] .mla{padding-left:0;padding-right:1.4em}
+[dir="rtl"] .arrow{display:inline-block;transform:scaleX(-1)}
+[dir="rtl"] .country{margin-left:0;margin-right:4px}
+[dir="rtl"] th,[dir="rtl"] td{text-align:right}
 footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px;max-width:80ch}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
@@ -151,64 +162,67 @@ footer{margin-top:30px;color:var(--muted);font-size:12.5px;display:grid;gap:6px;
       <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3 L20 9 H12 Z" fill="var(--beacon)"/><rect x="12.5" y="9" width="7" height="16" rx="1" fill="none" stroke="#F2EBDD" stroke-width="1.8"/><path d="M10 25 H22 L23.5 29 H8.5 Z" fill="#F2EBDD"/><path d="M21 7 L30 3 M21 9 L30 11 M11 7 L2 3 M11 9 L2 11" stroke="var(--beacon)" stroke-width="1.6" stroke-linecap="round"/></svg>
       Fanale
     </div>
-    <small>Rare-disease specialist search · PubMed + ClinicalTrials.gov</small>
+    <div class="topRight"><small data-i18n="tagline">Rare-disease specialist search · PubMed + ClinicalTrials.gov</small><label class="lang" for="lang"><span class="sr" data-i18n="langLabel">Language</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9s1.3-6.3 3.8-9z"/></svg><select id="lang"></select></label></div>
   </header>
 
   <section class="desk" aria-labelledby="h">
-    <h1 id="h">Find the researchers who know this condition best.</h1>
-    <p class="lede">Enter a medical diagnosis. Fanale searches PubMed and ClinicalTrials.gov, and ranks them by most recent publication.</p>
+    <h1 id="h" data-i18n="h1">Find the researchers who know this condition best.</h1>
+    <p class="lede" data-i18n="lede">Enter a medical diagnosis. Fanale searches PubMed and ClinicalTrials.gov, and ranks them by most recent publication.</p>
     <form class="search" id="form" autocomplete="off">
       <label class="field" for="q">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <span class="sr">Medical diagnosis</span>
-        <input id="q" name="q" type="search" placeholder="e.g. systemic lupus erythematosus" required>
+        <span class="sr" data-i18n="diagLabel">Medical diagnosis</span>
+        <input id="q" name="q" type="search" placeholder="e.g. systemic lupus erythematosus" data-i18n-placeholder="placeholder" required>
       </label>
-      <button class="btn btn-primary" id="go" type="submit">Search</button>
-      <button class="btn btn-ghost" id="stop" type="button" hidden>Stop</button>
+      <button class="btn btn-primary" id="go" type="submit" data-i18n="search">Search</button>
+      <button class="btn btn-ghost" id="stop" type="button" hidden data-i18n="stop">Stop</button>
     </form>
-    <div class="examples">Try:
-      <button class="chip" type="button" data-q="systemic lupus erythematosus">Lupus</button>
-      <button class="chip" type="button" data-q="Hermansky-Pudlak syndrome">Hermansky-Pudlak syndrome</button>
-      <button class="chip" type="button" data-q="sickle cell disease">Sickle cell disease</button>
-      <button class="chip" type="button" data-q="Fabry disease">Fabry disease</button>
+    <p class="hint" id="searchHint" hidden></p>
+    <div class="examples"><span data-i18n="try">Try:</span>
+      <button class="chip" type="button" data-q="systemic lupus erythematosus" data-i18n="chipLupus">Lupus</button>
+      <button class="chip" type="button" data-q="Hermansky-Pudlak syndrome" data-i18n="chipHPS">Hermansky-Pudlak syndrome</button>
+      <button class="chip" type="button" data-q="sickle cell disease" data-i18n="chipSickle">Sickle cell disease</button>
+      <button class="chip" type="button" data-q="Fabry disease" data-i18n="chipFabry">Fabry disease</button>
     </div>
   </section>
 
   <div class="pipeline" aria-live="polite">
-    <div class="step" id="s-pubmed"><span class="dot"></span>Search PubMed <span class="n" id="n-pubmed"></span></div>
+    <div class="step" id="s-pubmed"><span class="dot"></span><span data-i18n="stepPubmed">Search PubMed</span> <span class="n" id="n-pubmed"></span></div>
     <span class="arrow" aria-hidden="true">→</span>
-    <div class="step" id="s-trials"><span class="dot"></span>Search ClinicalTrials.gov <span class="n" id="n-trials"></span></div>
+    <div class="step" id="s-trials"><span class="dot"></span><span data-i18n="stepTrials">Search ClinicalTrials.gov</span> <span class="n" id="n-trials"></span></div>
     <span class="arrow" aria-hidden="true">→</span>
-    <div class="step" id="s-db"><span class="dot"></span>Build researcher database <span class="n" id="n-db"></span></div>
+    <div class="step" id="s-db"><span class="dot"></span><span data-i18n="stepDb">Build researcher database</span> <span class="n" id="n-db"></span></div>
     <span class="arrow" aria-hidden="true">→</span>
-    <div class="step" id="s-org"><span class="dot"></span>Look up organizations <span class="n" id="n-org"></span></div>
+    <div class="step" id="s-org"><span class="dot"></span><span data-i18n="stepOrg">Look up organizations</span> <span class="n" id="n-org"></span></div>
   </div>
 
   <div id="notice"></div>
 
   <div class="resultsHead">
-    <h2 id="rtitle">Researchers</h2>
+    <h2 id="rtitle" data-i18n="researchers">Researchers</h2>
     <p id="rmeta"></p>
   </div>
   <div class="groups" id="grid" aria-live="polite"></div>
 
   <details class="db" id="dbBox">
-    <summary>Temporary researcher database <span id="dbCount"></span></summary>
+    <summary><span data-i18n="dbSummary">Temporary researcher database</span> <span id="dbCount"></span></summary>
     <div class="tableWrap">
       <table>
-        <thead><tr><th>Most recent</th><th>Researcher</th><th>Organization</th><th>Country</th><th>Continent</th><th>Email</th><th>Phone</th><th>Treatment and medicine</th><th>Reference (MLA)</th></tr></thead>
+        <thead><tr><th data-i18n="thRecent">Most recent</th><th data-i18n="thResearcher">Researcher</th><th data-i18n="thOrg">Organization</th><th data-i18n="thCountry">Country</th><th data-i18n="thContinent">Continent</th><th data-i18n="thEmail">Email</th><th data-i18n="thPhone">Phone</th><th data-i18n="thTx">Treatment and medicine</th><th data-i18n="thRef">Reference (MLA)</th></tr></thead>
         <tbody id="dbRows"></tbody>
       </table>
     </div>
   </details>
 
   <footer>
-    <div>Fanale is not medical advice. Researcher details come from public PubMed records and ClinicalTrials.gov registrations. Verify details before reaching out. No user data is being collected, archived, or shared.</div>
-    <div>The database is temporary: it lives only in this page while it is open and is not saved.</div>
-    <div class="credit">Fanale was created by <b>Struvante</b> · Puerto Rico · © 2026</div>
+    <div data-i18n="footer1">Fanale is not medical advice. Researcher details come from public PubMed records and ClinicalTrials.gov registrations. Verify details before reaching out. No user data is being collected, archived, or shared.</div>
+    <div data-i18n="footer2">The database is temporary: it lives only in this page while it is open and is not saved.</div>
+    <div class="credit" data-i18n-html="credit">Fanale was created by <b>Struvante</b> · Puerto Rico · © 2026</div>
   </footer>
 </div>
 
+<script src="i18n-more.js"></script>
+<script src="i18n.js"></script>
 <script src="standalone.js"></script>
 </body>
 </html>
