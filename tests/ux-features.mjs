@@ -65,6 +65,16 @@ try {
   check(mob.toolHidden, "mobile: duplicate Print list button hidden");
   await page.setViewportSize({ width: 1400, height: 900 });
   check(await page.evaluate(() => getComputedStyle(document.getElementById("hdrPrint")).display === "none"), "desktop: header Print button hidden");
+  // Print: two researchers per page (5 example cards -> 3 pages)
+  const pg = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  await pg.route("https://fonts.googleapis.com/**", (r) => r.abort());
+  await pg.goto(PAGE); await pg.waitForSelector(".card");
+  const n = await pg.locator(".card:not(.empty)").count();
+  await pg.emulateMedia({ media: "print" });
+  await pg.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  const pdf = await pg.pdf({ format: "Letter", printBackground: true });
+  const pages = (pdf.toString("latin1").match(/\/Type\s*\/Page[^s]/g) || []).length;
+  check(n === 5 && pages === 3, `print: ${n} researchers fit on ${pages} pages (two per page)`);
   check(errors.length === 0, "no script errors" + (errors.length ? ": " + errors[0] : ""));
 } finally { await browser.close(); }
 console.log(failures ? `${failures} check(s) failed` : "All checks passed");

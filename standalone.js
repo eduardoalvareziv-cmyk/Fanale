@@ -691,6 +691,12 @@
   }));
   $("printBtn").addEventListener("click", () => window.print());
   $("hdrPrint").addEventListener("click", () => window.print());
+  // Print layout: two researchers per page. Every second card (and the very last) ends a page, counting across continents.
+  window.addEventListener("beforeprint", () => {
+    const cards = [...document.querySelectorAll("#grid section.cont .card")];
+    cards.forEach((c, i) => c.classList.toggle("pgEnd", i % 2 === 1 && i !== cards.length - 1));
+  });
+  window.addEventListener("afterprint", () => document.querySelectorAll(".card.pgEnd").forEach((c) => c.classList.remove("pgEnd")));
 
   // ---------- Copy summary (to bring to a doctor) ----------
   function summaryText(r) {
