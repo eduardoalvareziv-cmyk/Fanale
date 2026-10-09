@@ -3,6 +3,8 @@
   // Data: NCBI E-utilities (PubMed) and the ClinicalTrials.gov v2 API, called directly. No AI, no keys, nothing stored.
   const EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/";
   const CTGOV = "https://clinicaltrials.gov/api/v2/studies";
+  const ROR = "https://api.ror.org/v2/organizations?affiliation=";
+  const WIKIDATA = "https://www.wikidata.org/w/api.php?action=wbgetentities&props=claims&format=json&origin=*&ids=";
   const PER_CONTINENT = 10;
 
   const $ = (id) => document.getElementById(id);
@@ -47,7 +49,7 @@
     if (state) el.classList.add(state);
     if (count !== undefined) $("n-" + id).textContent = count;
   }
-  const resetSteps = () => ["pubmed", "trials", "db"].forEach((s) => setStep(s, null, ""));
+  const resetSteps = () => ["pubmed", "trials", "db", "org"].forEach((s) => setStep(s, null, ""));
   function notice(kind, html) { $("notice").innerHTML = html ? `<div class="notice ${kind}" role="status"><div>${html}</div></div>` : ""; }
   const safeMLA = (s) => esc(s).replace(/&lt;i&gt;/g, "<i>").replace(/&lt;\/i&gt;/g, "</i>");
   const initials = (r) => ((r.firstName || "").trim().charAt(0) + (r.lastName || "").trim().charAt(0)).toUpperCase() || "?";
@@ -71,12 +73,14 @@
   }
   function orgContact(r, f) {
     if (has(r[f])) return esc(r[f]);
-    return NA;
+    return r.orgPending ? '<span class="pending">Looking up…</span>' : NA;
   }
+  const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
   function card(r, i) {
     const ids = (r.ids || []).map(idLink).join("");
-    const missingOrg = r.organization && !(has(r.organizationPhone) && has(r.organizationEmail)) && !r.example;
+    const missingOrg = r.organization && !(has(r.organizationPhone) && has(r.organizationEmail)) && !r.example && !r.orgPending;
     const orgSrc = r.orgSource ? `<div class="src">Organization contact from ${esc(r.orgSource)}</div>` : "";
+    const site = r.website ? `<a href="${esc(r.website)}" target="_blank" rel="noopener">${esc(hostOf(r.website))}</a>` : (r.orgPending ? '<span class="pending">Looking up…</span>' : NA);
     const findOrg = missingOrg ? `<div class="src"><a href="${esc(google(`${r.organization} contact phone email`))}" target="_blank" rel="noopener">Find organization contact</a> (opens a web search)</div>` : "";
     return `<article class="card">
       <div class="cardHead"><span class="rank">${i + 1}</span><div style="min-width:0">
@@ -86,8 +90,8 @@
         <div class="who"><div class="avatar" aria-hidden="true">${esc(initials(r))}</div><div class="whoText">${profileLine(r)}</div></div>
         <dl><dt>Phone</dt><dd>${val(r.phone)}</dd><dt>Email</dt><dd>${val(r.email)}</dd></dl></div>
       <div class="block"><div class="label">Work organization</div>
-        <div class="org">${val(r.organization)}${r.country ? `<span class="country">${esc(r.country)}</span>` : ""}</div>
-        <dl><dt>Address</dt><dd>${val(r.organizationAddress)}</dd><dt>Phone</dt><dd>${orgContact(r, "organizationPhone")}</dd><dt>Email</dt><dd>${orgContact(r, "organizationEmail")}</dd></dl>
+        <div class="org">${val(r.organization)}${r.country ? `<span class="country">${esc(r.country)}</span>` : ""}</div>${r.rorName ? `<div class="src">Matched to ${esc(r.rorName)} in the Research Organization Registry</div>` : ""}
+        <dl><dt>Address</dt><dd>${val(r.organizationAddress)}</dd><dt>Phone</dt><dd>${orgContact(r, "organizationPhone")}</dd><dt>Email</dt><dd>${orgContact(r, "organizationEmail")}</dd><dt>Website</dt><dd>${site}</dd></dl>
         ${orgSrc}${findOrg}</div>
       <div class="block"><div class="label">Treatment and medicine</div>${treatList(r)}</div>
       <div class="block pub"><div class="label">${r.trialDate ? "Most recent work (trial start)" : "Most recent publication"}</div>
@@ -286,6 +290,7 @@
         if (!x.last) continue;
         const r = get(x.fore, x.last);
         const aff = parseAffiliation(x.affs[0]);
+        fill(r, "affRaw", x.affs[0]);
         fill(r, "email", aff.email); fill(r, "organization", aff.organization); fill(r, "organizationAddress", aff.address);
         fill(r, "country", aff.country); fill(r, "occupation", aff.dept);
         r.items.push({ date: isoDate(a.pd), mla: mlaArticle(a), ids: [{ type: "pmid", id: a.pmid }, ...(a.doi ? [{ type: "doi", id: a.doi }] : [])] });
@@ -303,6 +308,8 @@
         if (mine) { fill(r, "phone", phoneOf(mine)); fill(r, "email", mine.email); }
         fill(r, "organization", o.affiliation);
         const aff = norm(o.affiliation);
+        const locForAff = t.locations.find((l) => aff && (norm(l.facility).includes(aff) || aff.includes(norm(l.facility))));
+        fill(r, "affRaw", [o.affiliation, locForAff && locForAff.city, locForAff && locForAff.country].filter(Boolean).join(", "));
         const loc = t.locations.find((l) => aff && (norm(l.facility).includes(aff) || aff.includes(norm(l.facility)))) || (t.locations.length === 1 ? t.locations[0] : null);
         if (loc) {
           fill(r, "organizationAddress", [loc.city, [loc.state, loc.zip].filter(Boolean).join(" ")].filter(Boolean).join(", "));
@@ -330,6 +337,82 @@
     return list.sort(byRecent);
   }
 
+  // ---------- Organization lookup: ROR (official name, website, Wikidata link) + Wikidata (phone, email, address) ----------
+  async function pool(items, n, fn) {
+    let i = 0;
+    await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; await fn(items[k], k); } }));
+  }
+  const claim = (claims, p) => {
+    const list = (claims && claims[p]) || [];
+    const c = list.find((x) => x.rank === "preferred") || list.find((x) => x.rank !== "deprecated");
+    const v = c && c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value;
+    return v == null ? null : typeof v === "string" ? v : v.text || null;
+  };
+  async function orgLookup(list, signal, onProgress) {
+    const groups = new Map();
+    for (const r of list) {
+      if (!(r.treatments || []).length || !has(r.affRaw)) continue;
+      if (has(r.organizationPhone) && has(r.organizationEmail) && r.website) continue;
+      const k = norm(r.affRaw).slice(0, 240);
+      if (!groups.has(k)) { if (groups.size >= 30) continue; groups.set(k, { aff: r.affRaw, people: [] }); }
+      groups.get(k).people.push(r);
+    }
+    const jobs = [...groups.values()];
+    if (!jobs.length) return { matched: 0, phones: 0, failed: false };
+    jobs.forEach((j) => j.people.forEach((r) => { r.orgPending = true; }));
+    onProgress();
+    let done = 0, failures = 0, matched = 0;
+    // 1) ROR affiliation matching, 4 at a time; accept only ROR's own "chosen" match.
+    await pool(jobs, 4, async (j) => {
+      try {
+        const res = await getOK(ROR + encodeURIComponent(j.aff.slice(0, 300)), signal, "json");
+        const hit = ((res && res.items) || []).find((x) => x.chosen);
+        const o = hit && hit.organization;
+        if (o) {
+          matched++;
+          j.ror = {
+            name: ((o.names || []).find((n) => (n.types || []).includes("ror_display")) || {}).value || null,
+            website: ((o.links || []).find((l) => l.type === "website") || {}).value || null,
+            city: (((o.locations || [])[0] || {}).geonames_details || {}).name || null,
+            country: (((o.locations || [])[0] || {}).geonames_details || {}).country_name || null,
+            qid: (((o.external_ids || []).find((x) => x.type === "wikidata") || {}).preferred) || ((((o.external_ids || []).find((x) => x.type === "wikidata") || {}).all || [])[0]) || null,
+          };
+        }
+      } catch (e) { if (e.name === "AbortError") throw e; failures++; }
+      done++; setStep("org", "active", `${done} of ${jobs.length}`);
+    });
+    // 2) Wikidata contact details for the matched organizations, in batches of 50.
+    const qids = [...new Set(jobs.map((j) => j.ror && j.ror.qid).filter(Boolean))];
+    const wd = {};
+    for (let i = 0; i < qids.length; i += 50) {
+      try {
+        const res = await getOK(WIKIDATA + qids.slice(i, i + 50).join("|"), signal, "json");
+        for (const [q, ent] of Object.entries((res && res.entities) || {})) {
+          const c = ent.claims || {};
+          wd[q] = { phone: claim(c, "P1329"), email: (claim(c, "P968") || "").replace(/^mailto:/i, "") || null, website: claim(c, "P856"), street: claim(c, "P6375") };
+        }
+      } catch (e) { if (e.name === "AbortError") throw e; }
+    }
+    let phones = 0;
+    for (const j of jobs) {
+      const d = j.ror, w = (d && d.qid && wd[d.qid]) || {};
+      for (const r of j.people) {
+        r.orgPending = false;
+        if (!d) continue;
+        if (!r.website) r.website = d.website || w.website || null;
+        if (!has(r.organizationPhone) && has(w.phone)) { r.organizationPhone = w.phone; phones++; }
+        if (!has(r.organizationEmail) && has(w.email)) r.organizationEmail = w.email;
+        if ((has(w.phone) || has(w.email)) && !r.orgSource) r.orgSource = "Wikidata, for " + (d.name || r.organization);
+        if (!has(r.organizationAddress) && has(w.street)) r.organizationAddress = w.street;
+        if (!has(r.organizationAddress) && d.city) r.organizationAddress = d.city;
+        if (!has(r.country) && d.country) r.country = d.country;
+        if (!r.continent) r.continent = continentOf(r.country) || continentOf(d.country);
+        if (d.name && norm(d.name) !== norm(r.organization)) r.rorName = d.name;
+      }
+    }
+    return { matched, phones, failed: failures === jobs.length };
+  }
+
   // ---------- Search ----------
   async function runSearch(q) {
     running = true; $("go").disabled = true; $("stop").hidden = false;
@@ -354,8 +437,17 @@
       setStep("db", "done", `${list.length} researchers`);
       render(list, list.length ? subFor(list, q) : { title: `No researchers found for “${q}”`, sub: "Try a broader or alternate name for the diagnosis." });
       notice(problems.length ? "err" : "", problems.join("<br>"));
+      if (list.length) {
+        setStep("org", "active");
+        const o = await orgLookup(list, ctl.signal, () => render(list, subFor(list, q)));
+        list.forEach((r) => { r.orgPending = false; });
+        if (o.failed) { setStep("org", "error"); problems.push("The organization directory (ROR) could not be reached, so official websites and organization phone numbers are missing. The rest of the results are complete."); }
+        else setStep("org", "done", `${o.matched} matched · ${o.phones} phones`);
+        render(list, subFor(list, q));
+        notice(problems.length ? "err" : "", problems.join("<br>"));
+      }
     } catch (e) {
-      if (e && e.name === "AbortError") { notice("", "Search stopped."); ["pubmed", "trials", "db"].forEach((s) => { if ($("s-" + s).classList.contains("active")) setStep(s, null); }); }
+      if (e && e.name === "AbortError") { notice("", "Search stopped."); ["pubmed", "trials", "db", "org"].forEach((s) => { if ($("s-" + s).classList.contains("active")) setStep(s, null); }); }
       else { notice("err", "Something went wrong while building the results. Try again."); }
     } finally {
       running = false; $("go").disabled = false; $("stop").hidden = true;

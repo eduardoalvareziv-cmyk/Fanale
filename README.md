@@ -14,7 +14,7 @@ This repository holds two versions of the same app:
 | Needs | Nothing | A Claude account plus the PubMed, Clinical Trials and Parallel Search connectors |
 | Data | PubMed and ClinicalTrials.gov, called directly from the browser | The same, through Claude connectors |
 | Researcher database | Built in code: affiliation parsing, trial registrations, MeSH "therapeutic use" indexing | Built by Claude, then verified in code |
-| Organization contacts and profiles | From trial site contacts, plus web-search links | Looked up on the web with Parallel Search |
+| Organization contacts and profiles | Trial site contacts, plus official website and phone/email from the ROR and Wikidata open databases; web-search links as fallback | Looked up on the web with Parallel Search |
 
 
 ## The problem, the users, the solution
@@ -66,6 +66,10 @@ Open https://eduardoalvareziv-cmyk.github.io/Fanale/, type a diagnosis (for exam
 
 - **PubMed E-utilities:** `esearch` for the 40 newest articles, and `efetch` for titles, authors, affiliations and MeSH indexing.
 - **ClinicalTrials.gov API v2:** active trials, with officials, contacts, sites and interventions.
+- **ROR (Research Organization Registry):** matches each raw affiliation to an official organization, its website and its Wikidata ID. Only ROR's own confident ("chosen") match is used.
+- **Wikidata:** the matched organization's main phone number, email and street address, when recorded.
+
+None of these services needs an API key.
 
 How the website version builds each card:
 
@@ -74,7 +78,8 @@ How the website version builds each card:
 - **Medicines:** substances PubMed's indexers tagged with the MeSH qualifier "therapeutic use", and trial interventions of type drug or biological.
 - **Treatments:** trial interventions such as procedures, devices and behavioral therapy. Placebo and sham arms are excluded.
 - **Who is shown:** researchers appear only if they have a treatment or medicine and an email, phone or known organization.
-- **Missing contacts:** where a profile or organization contact isn't in the data, the card offers a web-search link instead.
+- **Organization contacts:** the trial site contact comes first. The organization's general phone number and email from Wikidata are used only when that's missing, labeled with their source.
+- **Missing contacts:** where a profile or organization contact isn't in any source, the card offers a web-search link instead.
 
 To run it locally, serve the folder with any static server (`npx serve .`) and open the printed address.
 
@@ -101,11 +106,12 @@ npm run test:claude   # Claude version only
 ## Data, privacy and limitations
 
 - **Data:** only public sources are used (PubMed, ClinicalTrials.gov and public web pages). No patient data, no confidential information, and no credentials are in this repository or the app.
-- **No user data is collected, archived, or shared by Fanale.** The researcher database lives only in the open page and is discarded when it closes. In the website version, the diagnosis a user types is sent only to PubMed and ClinicalTrials.gov. In the Claude version it also goes to Parallel Search and Claude.
+- **No user data is collected, archived, or shared by Fanale.** The researcher database lives only in the open page and is discarded when it closes. In the website version, the diagnosis a user types is sent only to PubMed and ClinicalTrials.gov, and researchers' affiliations to ROR and Wikidata. In the Claude version it also goes to Parallel Search and Claude.
 - **Not medical advice.** Treatments shown are those named in the research, not recommendations.
 - **Limitations:**
   - Researchers' personal phone numbers are rarely published, so most contacts come from the researcher's organization.
   - Claude version: the Clinical Trials connector lists trial contacts by name only. The website version reads phone numbers and emails straight from the ClinicalTrials.gov API.
+  - Website version: organization phone numbers and emails exist in Wikidata for many large universities and hospitals but not for many smaller institutes, so coverage is partial.
   - Website version: medicines depend on PubMed's MeSH indexing, which can lag new articles by weeks, so the newest papers may show none yet.
   - Profile links come from web search and should be confirmed as the same person.
   - The page cannot display photos hosted on other sites, so it links to the profile page instead.
