@@ -96,4 +96,10 @@ The test confirms that:
 
 ## Credit
 
-Created by **Struvante**, Puerto Rico. © 2026 Struvante. All rights reserved.
+Created by **Struvante**, Puerto Rico.
+
+## License
+
+MIT License. Copyright (c) 2026 Struvante. See [LICENSE](LICENSE).
+
+The embedded TeX Gyre Pagella typeface is distributed under the GUST Font License; Public Sans and IBM Plex Mono are loaded from Google Fonts under the SIL Open Font License. Those fonts keep their own licenses.
