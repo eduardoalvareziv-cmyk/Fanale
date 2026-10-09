@@ -58,10 +58,8 @@
   const resetSteps = () => ["pubmed", "trials", "db", "cite", "org"].forEach((s) => setStep(s, null, ""));
   // Notices are kept as translation keys so they can be redrawn in another language.
   let lastNotice = { kind: "", keys: [] };
-  let spellSpec = null; // set when the search term was auto-corrected: {k, v}
   function notice(kind, keys) {
-    const ks = Array.isArray(keys) ? keys : keys ? [keys] : [];
-    lastNotice = { kind, keys: spellSpec && !ks.includes("searching") ? [spellSpec, ...ks] : ks };
+    lastNotice = { kind, keys: (Array.isArray(keys) ? keys : keys ? [keys] : []) };
     const html = lastNotice.keys.map((k) => (typeof k === "string" ? tr(k) : tr(k.k, k.v))).join("<br>");
     $("notice").innerHTML = html ? `<div class="notice ${kind}" role="status"><div>${html}</div></div>` : "";
   }
@@ -536,34 +534,14 @@
   }
 
   // ---------- Search ----------
-  // PubMed's spelling suggestion (ESpell) for the typed diagnosis. Returns "" when none, or on any failure.
-  async function spellFix(q, signal) {
-    try {
-      const timer = new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 4000));
-      const xml = await Promise.race([getOK(`${EUTILS}espell.fcgi?db=pubmed&tool=fanale&term=${encodeURIComponent(q)}`, signal, "text"), timer]);
-      const c = (new DOMParser().parseFromString(xml, "text/xml").querySelector("CorrectedQuery") || {}).textContent || "";
-      const fixed = c.replace(/\s+/g, " ").trim();
-      return fixed && fixed.toLowerCase() !== q.toLowerCase() ? fixed : "";
-    } catch (e) { if (e && e.name === "AbortError") throw e; return ""; }
-  }
-  async function runSearch(q, skipSpell) {
+  async function runSearch(q) {
     running = true; $("go").disabled = true; $("stop").hidden = false;
     resetSteps();
-    spellSpec = null;
     notice("", "searching");
     setHead(() => ({ title: tr("searchingFor", { q }), sub: "" }));
     ctl = new AbortController();
     const problems = [];
     try {
-      if (!skipSpell) {
-        const fixed = await spellFix(q, ctl.signal);
-        if (fixed) {
-          spellSpec = { k: "spellUsed", v: { q: esc(fixed), orig: esc(q) } };
-          $("q").value = fixed;
-          q = fixed;
-          setHead(() => ({ title: tr("searchingFor", { q }), sub: "" }));
-        }
-      }
       const [pm, ct] = await Promise.allSettled([fetchPubMed(q, ctl.signal), fetchTrials(q, ctl.signal)]);
       if ([pm, ct].some((x) => x.status === "rejected" && x.reason && x.reason.name === "AbortError")) throw { name: "AbortError" };
       if (pm.status === "rejected") { setStep("pubmed", "error"); problems.push("pubmedDown"); }
@@ -603,16 +581,76 @@
   }
 
   // ---------- Wire up ----------
-  $("notice").addEventListener("click", (e) => {
-    const a = e.target.closest && e.target.closest("a[data-spell]");
-    if (!a) return;
-    e.preventDefault();
-    const orig = a.getAttribute("data-spell");
-    if (orig && !running) { $("q").value = orig; runSearch(orig, true); }
+  // ---------- Suggestions dropdown ----------
+  // "Did you mean" from PubMed's spelling suggester (ESpell), plus matching condition names from the NLM Clinical Tables
+  // service. Nothing is changed in the search box unless the user picks a suggestion.
+  const CLINTABLES = "https://clinicaltables.nlm.nih.gov/api/conditions/v3/search";
+  const qInput = $("q"), sugBox = $("sug");
+  let sugItems = [], sugIdx = -1, sugTimer = 0, sugSeq = 0, sugCtl = null;
+  const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
+  function sugClose() {
+    sugSeq++; clearTimeout(sugTimer); if (sugCtl) sugCtl.abort();
+    sugItems = []; sugIdx = -1; sugBox.hidden = true; sugBox.innerHTML = "";
+    qInput.setAttribute("aria-expanded", "false"); qInput.removeAttribute("aria-activedescendant");
+  }
+  function sugRender() {
+    if (!sugItems.length) { sugBox.hidden = true; sugBox.innerHTML = ""; qInput.setAttribute("aria-expanded", "false"); return; }
+    sugBox.innerHTML = sugItems.map((it, i) => `<li role="option" id="sug-${i}" data-i="${i}" aria-selected="${i === sugIdx}">${it.fix ? `<span class="sugTag">${esc(tr("sugDidYou"))}</span>` : ""}<span class="sugText">${esc(it.text)}</span></li>`).join("");
+    sugBox.hidden = false; qInput.setAttribute("aria-expanded", "true");
+    if (sugIdx >= 0) qInput.setAttribute("aria-activedescendant", "sug-" + sugIdx); else qInput.removeAttribute("aria-activedescendant");
+  }
+  async function sugFetch(term, seq) {
+    if (sugCtl) sugCtl.abort();
+    sugCtl = new AbortController();
+    const sig = sugCtl.signal;
+    const [sp, ct] = await Promise.allSettled([
+      withTimeout(getOK(`${EUTILS}espell.fcgi?db=pubmed&tool=fanale&term=${encodeURIComponent(term)}`, sig, "text"), 4000),
+      withTimeout(getOK(`${CLINTABLES}?terms=${encodeURIComponent(term)}&df=primary_name&sf=primary_name,consumer_name&maxList=7`, sig, "json"), 4000),
+    ]);
+    if (seq !== sugSeq) return;
+    const lc = (x) => x.toLowerCase();
+    const items = [], seen = new Set([lc(term)]);
+    if (sp.status === "fulfilled") {
+      const c = ((new DOMParser().parseFromString(sp.value, "text/xml").querySelector("CorrectedQuery") || {}).textContent || "").replace(/\s+/g, " ").trim();
+      if (c && !seen.has(lc(c))) { seen.add(lc(c)); items.push({ text: c, fix: true }); }
+    }
+    if (ct.status === "fulfilled" && Array.isArray(ct.value) && Array.isArray(ct.value[3])) {
+      for (const row of ct.value[3]) {
+        const n = String((Array.isArray(row) ? row[0] : row) || "").trim();
+        if (n && !seen.has(lc(n)) && items.length < 7) { seen.add(lc(n)); items.push({ text: n }); }
+      }
+    }
+    sugItems = items; sugIdx = -1; sugRender();
+  }
+  function sugPick(i) {
+    const it = sugItems[i]; if (!it) return;
+    qInput.value = it.text; sugClose();
+    if (!running) runSearch(it.text);
+  }
+  qInput.addEventListener("input", () => {
+    clearTimeout(sugTimer);
+    const term = qInput.value.trim();
+    if (term.length < 3) { sugClose(); return; }
+    const seq = ++sugSeq;
+    sugTimer = setTimeout(() => sugFetch(term, seq), 250);
   });
-  $("form").addEventListener("submit", (e) => { e.preventDefault(); const q = $("q").value.trim(); if (q && !running) runSearch(q); });
+  qInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { if (!sugBox.hidden) { e.preventDefault(); sugClose(); } return; }
+    if (sugBox.hidden || !sugItems.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      sugIdx = e.key === "ArrowDown" ? (sugIdx + 1) % sugItems.length : (sugIdx <= 0 ? sugItems.length - 1 : sugIdx - 1);
+      sugRender();
+    } else if (e.key === "Enter" && sugIdx >= 0) { e.preventDefault(); sugPick(sugIdx); }
+  });
+  qInput.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== qInput) sugClose(); }, 150));
+  sugBox.addEventListener("mousedown", (e) => e.preventDefault());
+  sugBox.addEventListener("click", (e) => { const li = e.target.closest("li[data-i]"); if (li) sugPick(Number(li.dataset.i)); });
+  I.onChange(() => { if (sugItems.length) sugRender(); });
+
+  $("form").addEventListener("submit", (e) => { e.preventDefault(); sugClose(); const q = $("q").value.trim(); if (q && !running) runSearch(q); });
   $("stop").addEventListener("click", () => ctl && ctl.abort());
-  document.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => { $("q").value = b.dataset.q; if (!running) runSearch(b.dataset.q); }));
+  document.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => { sugClose(); $("q").value = b.dataset.q; if (!running) runSearch(b.dataset.q); }));
 
   // Language menu: English by default; switching redraws everything already on the page.
   const langSel = $("lang");

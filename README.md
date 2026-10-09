@@ -71,6 +71,7 @@ Open https://eduardoalvareziv-cmyk.github.io/Fanale/, type a diagnosis (for exam
 - **ClinicalTrials.gov API v2:** active trials, with officials, contacts, sites and interventions.
 - **ROR (Research Organization Registry):** matches each raw affiliation to an official organization, its website and its Wikidata ID. Only ROR's own confident ("chosen") match is used.
 - **PubMed ESpell:** a spelling suggestion for the typed diagnosis.
+- **NLM Clinical Tables:** matching condition names for the suggestions list.
 - **Wikidata:** the matched organization's main phone number, email and street address, when recorded.
 - **OpenAlex:** each researcher's total citations, h-index and number of works.
 
@@ -82,7 +83,7 @@ How the website version builds each card:
 - **Contacts:** emails are parsed from PubMed affiliations. Phone numbers and emails come from trial registrations. Organization contacts come from the trial site contact at the researcher's institution.
 - **Medicines:** substances PubMed's indexers tagged with the MeSH qualifier "therapeutic use", and trial interventions of type drug or biological.
 - **Treatments:** trial interventions such as procedures, devices and behavioral therapy. Placebo and sham arms are excluded.
-- **Spell check:** before searching, the term goes through PubMed's spelling suggester (ESpell). If it finds a likely typo, Fanale searches the corrected term, updates the search box, and shows "Showing results for …" with a "Search instead for …" link to use the original wording. If the suggester is slow or down, the original term is searched.
+- **Suggestions:** as the user types (3+ characters), a dropdown offers a "Did you mean" spelling fix from PubMed's spelling suggester (ESpell) followed by matching condition names from the NLM Clinical Tables service. Nothing is changed unless the user picks one (click, or arrow keys + Enter); pressing Search always searches exactly what was typed. If the suggestion services are slow or down, the list simply doesn't appear.
 - **Who is shown:** researchers appear only if they have a treatment or medicine and at least one real contact: a phone or email for the researcher or their organization. Everyone else stays in the temporary database table.
 - **Organization contacts:** the trial site contact comes first. The organization's general phone number and email from Wikidata are used only when that's missing, labeled with their source.
 - **Missing contacts:** where a profile or organization contact isn't in any source, the card offers a web-search link instead.
@@ -114,7 +115,7 @@ npm run test:claude   # Claude version only
 ## Data, privacy and limitations
 
 - **Data:** only public sources are used (PubMed, ClinicalTrials.gov, ROR, Wikidata, OpenAlex and public web pages). No patient data, no confidential information, and no credentials are in this repository or the app.
-- **No user data is collected, archived, or shared by Fanale.** The researcher database lives only in the open page and is discarded when it closes. In the website version, the diagnosis a user types is sent only to PubMed and ClinicalTrials.gov, researchers' affiliations to ROR and Wikidata, and researchers' names and PubMed IDs to OpenAlex. In the Claude version it also goes to Parallel Search and Claude.
+- **No user data is collected, archived, or shared by Fanale.** The researcher database lives only in the open page and is discarded when it closes. In the website version, the diagnosis a user types is sent only to PubMed and ClinicalTrials.gov, what is typed in the search box to PubMed (spelling) and NLM Clinical Tables (suggestions), researchers' affiliations to ROR and Wikidata, and researchers' names and PubMed IDs to OpenAlex. In the Claude version it also goes to Parallel Search and Claude.
 - **Not medical advice.** Treatments shown are those named in the research, not recommendations.
 - **Limitations:**
   - Researchers' personal phone numbers are rarely published, so most contacts come from the researcher's organization.
