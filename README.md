@@ -15,6 +15,7 @@ This repository holds two versions of the same app:
 | Data | PubMed and ClinicalTrials.gov, called directly from the browser | The same, through Claude connectors |
 | Researcher database | Built in code: affiliation parsing, trial registrations, MeSH "therapeutic use" indexing | Built by Claude, then verified in code |
 | Organization contacts and profiles | Trial site contacts, plus official website and phone/email from the ROR and Wikidata open databases; web-search links as fallback | Looked up on the web with Parallel Search |
+| Ranking | Most recent and most cited first, using OpenAlex citation counts; switchable to "Most cited" or "Newest" | Newest publication first |
 
 
 ## The problem, the users, the solution
@@ -70,6 +71,7 @@ Open https://eduardoalvareziv-cmyk.github.io/Fanale/, type a diagnosis (for exam
 - **ClinicalTrials.gov API v2:** active trials, with officials, contacts, sites and interventions.
 - **ROR (Research Organization Registry):** matches each raw affiliation to an official organization, its website and its Wikidata ID. Only ROR's own confident ("chosen") match is used.
 - **Wikidata:** the matched organization's main phone number, email and street address, when recorded.
+- **OpenAlex:** each researcher's total citations, h-index and number of works.
 
 None of these services needs an API key.
 
@@ -82,6 +84,8 @@ How the website version builds each card:
 - **Who is shown:** researchers appear only if they have a treatment or medicine and at least one real contact: a phone or email for the researcher or their organization. Everyone else stays in the temporary database table.
 - **Organization contacts:** the trial site contact comes first. The organization's general phone number and email from Wikidata are used only when that's missing, labeled with their source.
 - **Missing contacts:** where a profile or organization contact isn't in any source, the card offers a web-search link instead.
+- **Citations:** each researcher is matched to their OpenAlex author profile through their own PubMed paper (name must match an author of that paper). Trial investigators without a paper in the results are matched by name only when exactly one OpenAlex author with that name works at the same institution. The card shows "Cited N times · h-index · works" with a link to the OpenAlex profile.
+- **Ranking:** by default, researchers with the most recent publication *and* the most citations come first. Each researcher gets a recency percentile and a citation percentile within the results, and the two are averaged equally; a researcher whose citation count isn't found gets no citation credit. The "Rank by" buttons switch to "Most cited" (career citations only) or "Newest" (most recent publication only); the choice is remembered in the browser.
 
 To run it locally, serve the folder with any static server (`npx serve .`) and open the printed address.
 
@@ -107,8 +111,8 @@ npm run test:claude   # Claude version only
 
 ## Data, privacy and limitations
 
-- **Data:** only public sources are used (PubMed, ClinicalTrials.gov and public web pages). No patient data, no confidential information, and no credentials are in this repository or the app.
-- **No user data is collected, archived, or shared by Fanale.** The researcher database lives only in the open page and is discarded when it closes. In the website version, the diagnosis a user types is sent only to PubMed and ClinicalTrials.gov, and researchers' affiliations to ROR and Wikidata. In the Claude version it also goes to Parallel Search and Claude.
+- **Data:** only public sources are used (PubMed, ClinicalTrials.gov, ROR, Wikidata, OpenAlex and public web pages). No patient data, no confidential information, and no credentials are in this repository or the app.
+- **No user data is collected, archived, or shared by Fanale.** The researcher database lives only in the open page and is discarded when it closes. In the website version, the diagnosis a user types is sent only to PubMed and ClinicalTrials.gov, researchers' affiliations to ROR and Wikidata, and researchers' names and PubMed IDs to OpenAlex. In the Claude version it also goes to Parallel Search and Claude.
 - **Not medical advice.** Treatments shown are those named in the research, not recommendations.
 - **Limitations:**
   - Researchers' personal phone numbers are rarely published, so most contacts come from the researcher's organization.
@@ -118,11 +122,12 @@ npm run test:claude   # Claude version only
   - Profile links come from web search and should be confirmed as the same person.
   - The page cannot display photos hosted on other sites, so it links to the profile page instead.
   - Claude version: Parallel Search's free tier is rate-limited; the page offers a "Retry web lookup" button.
+  - Website version: citation counts are career totals from OpenAlex, which reflect all of a researcher's work, not only work on the searched disease. Name matching can occasionally miss a researcher (shown as "Citation count not found") or, rarely, pick a namesake. OpenAlex allows a limited number of keyless requests per day (each search uses about 2–17), which is ample for a demo; a free OpenAlex key raises it.
   - Results reflect the newest 40 PubMed articles and active trials, not every expert in the field.
 
 ## Built with
 
-- Website version: NCBI E-utilities and the ClinicalTrials.gov API v2, hosted on GitHub Pages
+- Website version: NCBI E-utilities, the ClinicalTrials.gov API v2, ROR, Wikidata and OpenAlex, hosted on GitHub Pages
 - Claude version: Claude artifact runtime, connectors (`mcp`) and Claude (`sample`)
 - Claude version connectors: PubMed, Clinical Trials and Parallel Search
 - Vanilla HTML, CSS and JavaScript; no build step

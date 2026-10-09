@@ -5,6 +5,7 @@
   const CTGOV = "https://clinicaltrials.gov/api/v2/studies";
   const ROR = "https://api.ror.org/v2/organizations?affiliation=";
   const WIKIDATA = "https://www.wikidata.org/w/api.php?action=wbgetentities&props=claims&format=json&origin=*&ids=";
+  const OPENALEX = "https://api.openalex.org/";
   const PER_CONTINENT = 10;
 
   const $ = (id) => document.getElementById(id);
@@ -41,7 +42,7 @@
     { firstName: "Sofía", lastName: "Reyes", occupation: "Pediatric Nephrologist", organization: "Example Children's Medical Center", organizationAddress: "5 Placeholder St, Houston, TX", organizationPhone: "(555) 010-4400", organizationEmail: "research@example.org", country: "United States", date: "2026-05-20", mla: 'Reyes, Sofía, et al. "Example Cohort of Childhood-Onset Lupus." <i>Example Pediatrics</i>, vol. 30, no. 2, 2026, pp. 77-84.', treatments: [["Hydroxychloroquine", "Medicine"], ["Exercise program", "Treatment"]] },
     { firstName: "Hiro", lastName: "Tanaka", email: "h.tanaka@example.org", organization: "Example Medical University", country: "Japan", date: "2026-03", mla: 'Tanaka, Hiro, et al. "Example Biomarkers for Flare Prediction." <i>Example Clinical Medicine</i>, vol. 4, 2026, p. 19.', treatments: [["Low-dose aspirin", "Medicine"]] },
     { firstName: "Laura", lastName: "Bennett", occupation: "Principal Investigator", organization: "Example Clinical Research Network", organizationAddress: "Boston, Massachusetts 02115", organizationPhone: "(555) 010-7700", country: "United States", date: "2025-12-01", trialDate: true, mla: '"Example Phase 2 Trial of a Targeted Therapy in Lupus." <i>ClinicalTrials.gov</i>, sponsored by Example Clinical Research Network, NCT00000000.', treatments: [["CAR-T cell therapy", "Treatment"]] },
-  ].map((r) => ({ ...r, example: true, continent: continentOf(r.country), ids: [], treatments: r.treatments.map(([name, kind]) => ({ name, kind, src: null })) }));
+  ].map((r, i) => ({ ...r, example: true, continent: continentOf(r.country), ids: [], citations: [4210, 12890, 860, 2475, 1530][i], hIndex: [31, 58, 14, 24, 19][i], works: [96, 240, 37, 71, 52][i], treatments: r.treatments.map(([name, kind]) => ({ name, kind, src: null })) }));
 
   // ---------- UI helpers ----------
   let running = false, ctl = null;
@@ -54,7 +55,7 @@
     if (state) el.classList.add(state);
     if (count !== undefined) { stepCounts[id] = count; $("n-" + id).textContent = countText(count); }
   }
-  const resetSteps = () => ["pubmed", "trials", "db", "org"].forEach((s) => setStep(s, null, ""));
+  const resetSteps = () => ["pubmed", "trials", "db", "cite", "org"].forEach((s) => setStep(s, null, ""));
   // Notices are kept as translation keys so they can be redrawn in another language.
   let lastNotice = { kind: "", keys: [] };
   function notice(kind, keys) {
@@ -87,6 +88,16 @@
     return r.orgPending ? `<span class="pending">${esc(tr("lookingUp"))}</span>` : naHtml();
   }
   const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return u; } };
+  const fmtN = (n) => { try { return new Intl.NumberFormat(I.getLang()).format(n); } catch { return String(n); } };
+  function citeLine(r) {
+    if (r.citePending) return `<div class="cites pending">${esc(tr("citePending"))}</div>`;
+    if (r.citations == null) return r.example ? "" : `<div class="cites na">${esc(tr("citeNotFound"))}</div>`;
+    const parts = [`<b>${esc(tr("citedTimes", { n: fmtN(r.citations) }))}</b>`];
+    if (r.hIndex != null) parts.push(esc(tr("hIndex", { h: fmtN(r.hIndex) })));
+    if (r.works != null) parts.push(esc(tr("worksN", { n: fmtN(r.works) })));
+    const link = r.oaUrl ? ` · <a href="${esc(r.oaUrl)}" target="_blank" rel="noopener">OpenAlex</a>` : "";
+    return `<div class="cites">${parts.join(" · ")}${link}</div>`;
+  }
   function card(r, i) {
     const ids = (r.ids || []).map(idLink).join("");
     const missingOrg = r.organization && !(has(r.organizationPhone) && has(r.organizationEmail)) && !r.example && !r.orgPending;
@@ -96,7 +107,8 @@
     return `<article class="card">
       <div class="cardHead"><span class="rank">${i + 1}</span><div style="min-width:0">
         <h3 class="name">${esc(fullName(r)) || esc(tr("unnamed"))}</h3>
-        <div class="occ">${r.occupation ? esc(r.occupation) : naHtml()}</div></div></div>
+        <div class="occ">${r.occupation ? esc(r.occupation) : naHtml()}</div>
+        ${citeLine(r)}</div></div>
       <div class="block"><div class="label">${esc(tr("researcherContact"))}</div>
         <div class="who"><div class="avatar" aria-hidden="true">${esc(initials(r))}</div><div class="whoText">${profileLine(r)}</div></div>
         <dl><dt>${esc(tr("phone"))}</dt><dd>${val(r.phone)}</dd><dt>${esc(tr("email"))}</dt><dd>${val(r.email)}</dd></dl></div>
@@ -116,8 +128,32 @@
   // While an organization lookup is still running, the card stays until the lookup finishes.
   const reachable = (r) => has(r.email) || has(r.phone) || has(r.organizationPhone) || has(r.organizationEmail);
   const visible = (r) => (r.treatments || []).length > 0 && (reachable(r) || !!r.orgPending);
+  // Ranking: most cited first (default) or newest first. Researchers without a citation count go after those with one.
+  // "top" (default) blends how recent and how cited each researcher is; "cited" and "newest" sort by one only.
+  let sortMode = "top";
+  try { const m = localStorage.getItem("fanale-sort"); if (m === "top" || m === "cited" || m === "newest") sortMode = m; } catch {}
+  const byCited = (a, b) => ((b.citations ?? -1) - (a.citations ?? -1)) || byRecent(a, b);
+  // Percentile (0 = lowest, 1 = highest) of each value within the list; ties share a percentile.
+  const percentiles = (vals) => {
+    const uniq = [...new Set(vals)].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
+    const at = new Map(uniq.map((v, i) => [v, uniq.length > 1 ? i / (uniq.length - 1) : 1]));
+    return vals.map((v) => at.get(v));
+  };
+  const blendScores = (arr) => {
+    const rec = percentiles(arr.map((r) => dateKey(r.date)));
+    const cit = percentiles(arr.map((r) => r.citations ?? -1));
+    // A researcher with no citation count found gets no citation credit.
+    return new Map(arr.map((r, i) => [r, 0.5 * rec[i] + 0.5 * (r.citations == null ? 0 : cit[i])]));
+  };
+  const ranked = (arr) => {
+    if (sortMode === "newest") return arr.slice().sort(byRecent);
+    if (sortMode === "cited") return arr.slice().sort(byCited);
+    const sc = blendScores(arr);
+    return arr.slice().sort((a, b) => (sc.get(b) - sc.get(a)) || byCited(a, b));
+  };
+  const subKey = () => ({ top: "shownSubTop", cited: "shownSubCited", newest: "shownSub" })[sortMode];
   function groupShown(list) {
-    const vis = list.filter(visible);
+    const vis = ranked(list.filter(visible));
     return [...CONTINENTS, null].map((c) => ({ c, people: vis.filter((r) => (r.continent || null) === c).slice(0, PER_CONTINENT) })).filter((g) => g.people.length);
   }
   let lastList = [], headFn = null;
@@ -134,9 +170,11 @@
     $("grid").innerHTML = html;
     if (metaFn) setHead(metaFn);
     $("dbCount").textContent = "· " + I.plural(list.length, "record1", "recordN");
-    $("dbRows").innerHTML = list.map((r) => `<tr>
+    document.querySelectorAll("#sortBar button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.sort === sortMode)));
+    $("dbRows").innerHTML = ranked(list).map((r) => `<tr>
       <td class="date">${val(r.date)}</td>
       <td>${esc(fullName(r))}${r.occupation ? `<br><span class="na" style="font-style:normal">${esc(r.occupation)}</span>` : ""}</td>
+      <td class="num">${r.citations != null ? esc(fmtN(r.citations)) : naHtml()}</td>
       <td>${val(r.organization)}</td><td>${val(r.country)}</td><td>${r.continent ? esc(tr(r.continent)) : naHtml()}</td><td>${val(r.email)}</td><td>${val(r.phone)}</td>
       <td>${(r.treatments || []).map((x) => `${esc(x.name)} (${esc(tr(x.kind === "Medicine" ? "medicine" : "treatment").toLowerCase())})`).join(", ") || naHtml()}</td>
       <td>${r.mla ? safeMLA(r.mla) : naHtml()}</td></tr>`).join("");
@@ -146,7 +184,7 @@
     const vis = list.filter(visible).length, hidden = list.length - vis, over = vis - n;
     return {
       title: tr(n ? "resultsFor" : "noneWithContact", { q }),
-      sub: tr("shownSub", { n, max: PER_CONTINENT }) + (over ? tr("overLimit", { n: over }) : "") + (hidden ? tr("hiddenSub", { n: hidden }) : ""),
+      sub: tr(subKey(), { n, max: PER_CONTINENT }) + (over ? tr("overLimit", { n: over }) : "") + (hidden ? tr("hiddenSub", { n: hidden }) : ""),
     };
   }
 
@@ -346,7 +384,8 @@
       if (!r.items.length) continue;
       r.items.sort(byRecent);
       const top = r.items[0];
-      Object.assign(r, { date: top.date, trialDate: !!top.trialDate, mla: top.mla, ids: r.items.flatMap((x) => x.ids).slice(0, 4) });
+      Object.assign(r, { date: top.date, trialDate: !!top.trialDate, mla: top.mla, ids: r.items.flatMap((x) => x.ids).slice(0, 4),
+        pmids: [...new Set(r.items.flatMap((x) => x.ids).filter((x) => x.type === "pmid").map((x) => x.id))] });
       r.continent = continentOf(r.country);
       delete r.seenTx;
       list.push(r);
@@ -430,6 +469,64 @@
     return { matched, phones, failed: failures === jobs.length };
   }
 
+  // ---------- Citation counts: OpenAlex (free, no key) ----------
+  const GENERIC = new Set(["university", "universidad", "universite", "universita", "universitat", "hospital", "medical", "medicine", "center", "centre", "institute", "instituto", "institut", "school", "college", "health", "research", "department", "faculty", "national", "clinic", "clinical", "sciences", "science", "and", "the", "for", "of", "de", "del", "la"]);
+  const sigWords = (s) => new Set(norm(s).split(/[^a-z0-9]+/).filter((w) => w.length > 3 && !GENERIC.has(w)));
+  const sameInstitution = (a, b) => { const A = sigWords(a), B = sigWords(b); for (const w of A) if (B.has(w)) return true; return false; };
+  const nameMatches = (display, r) => {
+    const d = norm(display).replace(/[^a-z\s-]/g, " ").split(/\s+/).filter(Boolean);
+    const last = norm(r.lastName).split(/\s+/).pop(), firstI = norm(r.firstName).charAt(0);
+    return d.length > 0 && d.includes(last) && (!firstI || d[0].charAt(0) === firstI);
+  };
+  const shortId = (u) => String(u || "").split("/").pop();
+
+  async function citeLookup(list, signal, onProgress) {
+    const people = list.filter((r) => (r.treatments || []).length);
+    if (!people.length) return { matched: 0, failed: false };
+    people.forEach((r) => { r.citePending = true; });
+    onProgress();
+    let calls = 0, failures = 0;
+    const get = async (url) => { calls++; try { return await getOK(url, signal, "json"); } catch (e) { if (e.name === "AbortError") throw e; failures++; return null; } };
+    const ids = new Map(); // researcher -> OpenAlex author id
+    // 1) Researchers with PubMed papers: find their author id in those papers' authorships.
+    const pmids = [...new Set(people.flatMap((r) => r.pmids || []))].slice(0, 100);
+    if (pmids.length) {
+      const res = await get(`${OPENALEX}works?filter=ids.pmid:${pmids.join("|")}&per-page=100&select=ids,authorships`);
+      const byPmid = {};
+      for (const w of (res && res.results) || []) { const p = shortId(w.ids && w.ids.pmid); if (p) byPmid[p] = w.authorships || []; }
+      for (const r of people) for (const p of r.pmids || []) {
+        const hit = (byPmid[p] || []).find((a) => a.author && nameMatches(a.author.display_name || a.raw_author_name, r));
+        if (hit) { ids.set(r, shortId(hit.author.id)); break; }
+      }
+    }
+    // 2) Trial investigators without papers here: search by name, accept only one whose institution matches.
+    const stats = {};
+    const searchable = people.filter((r) => !ids.has(r) && r.organization).slice(0, 15);
+    await pool(searchable, 4, async (r) => {
+      const res = await get(`${OPENALEX}authors?search=${encodeURIComponent(fullName(r))}&per-page=10&select=id,display_name,cited_by_count,works_count,summary_stats,last_known_institutions`);
+      const hits = ((res && res.results) || []).filter((a) => nameMatches(a.display_name, r) && (a.last_known_institutions || []).some((i) => sameInstitution(i.display_name, r.organization)));
+      if (hits.length === 1) { const a = hits[0]; ids.set(r, shortId(a.id)); stats[shortId(a.id)] = a; }
+    });
+    // 3) Citation totals for every matched author, 50 per request.
+    const need = [...new Set([...ids.values()].filter((id) => !stats[id]))];
+    for (let i = 0; i < need.length; i += 50) {
+      const res = await get(`${OPENALEX}authors?filter=openalex:${need.slice(i, i + 50).join("|")}&per-page=50&select=id,display_name,cited_by_count,works_count,summary_stats`);
+      for (const a of (res && res.results) || []) stats[shortId(a.id)] = a;
+    }
+    let matched = 0;
+    for (const r of people) {
+      r.citePending = false;
+      const a = stats[ids.get(r)];
+      if (!a) continue;
+      matched++;
+      r.citations = a.cited_by_count ?? null;
+      r.hIndex = (a.summary_stats && a.summary_stats.h_index) ?? null;
+      r.works = a.works_count ?? null;
+      r.oaUrl = "https://openalex.org/" + shortId(a.id);
+    }
+    return { matched, failed: calls > 0 && failures === calls };
+  }
+
   // ---------- Search ----------
   async function runSearch(q) {
     running = true; $("go").disabled = true; $("stop").hidden = false;
@@ -456,16 +553,21 @@
       render(list, metaFn);
       notice(problems.length ? "err" : "", problems);
       if (list.length) {
-        setStep("org", "active");
-        const o = await orgLookup(list, ctl.signal, () => render(list, metaFn));
-        list.forEach((r) => { r.orgPending = false; });
+        setStep("org", "active"); setStep("cite", "active");
+        const redraw = () => render(list, metaFn);
+        const [o, c] = await Promise.all([
+          orgLookup(list, ctl.signal, redraw).finally(() => list.forEach((r) => { r.orgPending = false; })),
+          citeLookup(list, ctl.signal, redraw).finally(() => list.forEach((r) => { r.citePending = false; })),
+        ]);
         if (o.failed) { setStep("org", "error"); problems.push("rorDown"); }
         else setStep("org", "done", { k: "orgDone", v: { m: o.matched, p: o.phones } });
+        if (c.failed) { setStep("cite", "error"); problems.push("citeDown"); }
+        else setStep("cite", "done", { k: "citeDone", v: { m: c.matched } });
         render(list, metaFn);
         notice(problems.length ? "err" : "", problems);
       }
     } catch (e) {
-      if (e && e.name === "AbortError") { notice("", "stopped"); ["pubmed", "trials", "db", "org"].forEach((s) => { if ($("s-" + s).classList.contains("active")) setStep(s, null); }); }
+      if (e && e.name === "AbortError") { notice("", "stopped"); ["pubmed", "trials", "db", "cite", "org"].forEach((s) => { if ($("s-" + s).classList.contains("active")) setStep(s, null); }); lastList.forEach((r) => { r.orgPending = false; r.citePending = false; }); render(lastList, headFn); }
       else { notice("err", "wentWrong"); }
     } finally {
       running = false; $("go").disabled = false; $("stop").hidden = true;
@@ -490,7 +592,12 @@
     render(lastList, headFn);
   });
   I.applyStatic();
+  document.querySelectorAll("#sortBar button").forEach((b) => b.addEventListener("click", () => {
+    sortMode = b.dataset.sort;
+    try { localStorage.setItem("fanale-sort", sortMode); } catch {}
+    render(lastList, headFn);
+  }));
 
   notice("example", "exampleNotice");
-  render([...EXAMPLE].sort(byRecent), () => ({ title: tr("exampleTitle"), sub: tr("shownSub", { n: 5, max: PER_CONTINENT }) }));
+  render(EXAMPLE, () => ({ title: tr("exampleTitle"), sub: tr(subKey(), { n: 5, max: PER_CONTINENT }) }));
 })();

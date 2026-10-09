@@ -66,7 +66,18 @@ const CT = { studies: [{ protocolSection: {
       contacts: [{ name: "Sanita Kandasami", role: "CONTACT", phone: "516-562-0000", email: "skandasami@northwell.edu" }] }],
   } } }] };
 
-async function run(browser, { failPubMed = false, failRor = false } = {}) {
+// OpenAlex: Das (A1) and Rossi/Bianchi (A2/A3) are found through their PubMed papers; Aranow (trial only) by name + institution.
+const OA_WORKS = { results: [
+  { ids: { pmid: "https://pubmed.ncbi.nlm.nih.gov/42834216" }, authorships: [{ author: { id: "https://openalex.org/A1", display_name: "Undurti N. Das" } }] },
+  { ids: { pmid: "https://pubmed.ncbi.nlm.nih.gov/42000001" }, authorships: [
+    { author: { id: "https://openalex.org/A2", display_name: "Maria Rossi" } }, { author: { id: "https://openalex.org/A3", display_name: "Luca Bianchi" } }] }] };
+const OA_AUTHORS = { A1: { cited_by_count: 500, works_count: 40, summary_stats: { h_index: 12 } }, A2: { cited_by_count: 300, works_count: 20, summary_stats: { h_index: 9 } },
+  A3: { cited_by_count: 5000, works_count: 120, summary_stats: { h_index: 35 } } };
+const OA_SEARCH_ARANOW = { results: [
+  { id: "https://openalex.org/A9", display_name: "Cynthia Aranow", cited_by_count: 9000, works_count: 210, summary_stats: { h_index: 48 }, last_known_institutions: [{ display_name: "Feinstein Institutes for Medical Research" }] },
+  { id: "https://openalex.org/A8", display_name: "C. Aranow", cited_by_count: 3, works_count: 1, summary_stats: { h_index: 1 }, last_known_institutions: [{ display_name: "Unrelated College" }] }] };
+
+async function run(browser, { failPubMed = false, failRor = false, failOpenAlex = false } = {}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1600 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -83,12 +94,27 @@ async function run(browser, { failPubMed = false, failRor = false } = {}) {
     const body = /Padua/.test(aff) ? ROR_PADUA : /Feinstein/.test(aff) ? ROR_FEINSTEIN : ROR_NOMATCH;
     return r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(body) });
   });
+  const oaCalls = [];
+  await page.route("https://api.openalex.org/**", (r) => {
+    if (failOpenAlex) return r.abort();
+    const u = new URL(r.request().url()); oaCalls.push(u.href);
+    const json = (b) => r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(b) });
+    if (u.pathname === "/works") return json(OA_WORKS);
+    if (u.searchParams.get("search")) return json(/Aranow/i.test(u.searchParams.get("search")) ? OA_SEARCH_ARANOW : { results: [] });
+    const want = (u.searchParams.get("filter") || "").replace(/^openalex:/, "").split("|");
+    return json({ results: want.filter((id) => OA_AUTHORS[id]).map((id) => ({ id: "https://openalex.org/" + id, ...OA_AUTHORS[id] })) });
+  });
   await page.route("https://www.wikidata.org/**", (r) => r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(WIKIDATA) }));
   await page.route("https://clinicaltrials.gov/**", (r) => r.fulfill({ status: 200, contentType: "application/json", headers: { "Access-Control-Allow-Origin": "*" }, body: JSON.stringify(CT) }));
   await page.goto(PAGE);
   await page.fill("#q", "systemic lupus erythematosus");
   await page.click("#go");
-  await page.waitForFunction(() => { const s = document.getElementById("s-org"); return s.classList.contains("done") || s.classList.contains("error"); }, null, { timeout: 15000 });
+  await page.waitForFunction(() => { const s = document.getElementById("s-org"); return ["s-org", "s-cite"].every((id) => { const s = document.getElementById(id); return s.classList.contains("done") || s.classList.contains("error"); }); }, null, { timeout: 15000 });
+  const order = () => page.evaluate(() => [...document.querySelectorAll(".cont")].map((s) => [...s.querySelectorAll(".card .name")].map((n) => n.textContent.trim().split(" ").pop()).join(">")).join(" | "));
+  const orders = { top: await order() };
+  for (const mode of ["cited", "newest", "top"]) { await page.click(`#sortBar button[data-sort="${mode}"]`); orders[mode] = await order(); }
+  const dbCites = await page.evaluate(() => [...document.querySelectorAll("#dbRows tr")].map((tr) => tr.children[1].textContent.trim() + "=" + tr.children[2].textContent.trim()));
+  const citeStep = await page.evaluate(() => document.getElementById("s-cite").className + " " + document.getElementById("s-cite").textContent);
   const out = await page.evaluate(() => ({
     sections: [...document.querySelectorAll(".cont")].map((s) => ({ name: s.querySelector(".contHead").firstChild.textContent.trim(), cards: [...s.querySelectorAll(".card")].map((c) => c.innerText) })),
     meta: document.getElementById("rmeta").textContent, notice: document.getElementById("notice").innerText,
@@ -96,7 +122,7 @@ async function run(browser, { failPubMed = false, failRor = false } = {}) {
     links: [...document.querySelectorAll(".card a")].map((a) => a.textContent + " " + a.href),
   }));
   await page.close();
-  return { ...out, errors };
+  return { ...out, errors, orders, dbCites, citeStep, oaCalls };
 }
 
 const browser = await chromium.launch();
@@ -121,7 +147,7 @@ try {
   check(/unipd\.it/.test(card("Maria Rossi")) && /feinstein\.northwell\.edu/.test(card("Aranow")), "official website from ROR");
   check(/Matched to University of Padua/.test(card("Maria Rossi")) === false, "no 'matched to' note when names already agree");
   check(!/wrong\.example/.test(all) && /Find organization contact/.test(card("Das")), "unmatched organization (no ROR 'chosen') gets no website, keeps the search link");
-  check(!/\b000\b/.test(card("Aranow")), "deprecated Wikidata values ignored");
+  check(!/(^|[^,\d])000\b/.test(card("Aranow")), "deprecated Wikidata values ignored");
   check(r.links.some((l) => /Find profile and photo .*google\.com\/search/.test(l)), "profile search link present");
 
   const g = await run(browser, { failRor: true });
@@ -133,6 +159,23 @@ try {
   const f = await run(browser, { failPubMed: true });
   check(/PubMed<\/b>|PubMed could not be reached/.test(f.notice) || /PubMed could not be reached/.test(f.notice), "clear message when PubMed is unreachable");
   check(f.sections.flatMap((s) => s.cards).some((c) => /Cynthia Aranow/.test(c)), "ClinicalTrials.gov results still shown when PubMed fails");
+  // Citation ranking (OpenAlex)
+  check(/Cited 500 times/.test(card("Das")) && /h-index 12/.test(card("Das")) && /40 works/.test(card("Das")), "citation count, h-index and works from OpenAlex (via PubMed paper)");
+  check(/Cited 9,000 times/.test(card("Aranow")), "trial-only investigator matched by name and institution");
+  check(/Cited 5,000 times/.test(card("Bianchi")) && /Cited 300 times/.test(card("Maria Rossi")), "co-authors of one paper matched separately");
+  check(r.orders.top === "Das>Aranow | Bianchi>Rossi", `default blends recency and citations (${r.orders.top})`);
+  check(r.orders.cited === "Aranow>Das | Bianchi>Rossi", `"Most cited" ranks by citations only (${r.orders.cited})`);
+  check(r.orders.newest.startsWith("Das>Aranow"), `"Newest" ranks by most recent publication (${r.orders.newest})`);
+  check(/most recent and most cited first/.test(r.meta), "header says how the list is ranked");
+  check(r.dbCites.some((x) => /Aranow.*=9,000$/.test(x)) && r.dbCites.some((x) => /Nadal=Not listed/.test(x)), "database table has a citations column");
+  check(/done/.test(r.citeStep) && /4 matched/.test(r.citeStep), `citation step reports matches (${r.citeStep.trim()})`);
+  check(r.oaCalls.length <= 4, `OpenAlex calls kept small (${r.oaCalls.length})`);
+
+  const o = await run(browser, { failOpenAlex: true });
+  const oAll = o.sections.flatMap((s) => s.cards).join("\n");
+  check(/citation database \(OpenAlex\) could not be reached/.test(o.notice), "clear message when OpenAlex is unreachable");
+  check(/Undurti N Das/.test(oAll) && /Cynthia Aranow/.test(oAll) && o.errors.length === 0, "results still shown when OpenAlex fails");
+  check(/error/.test(o.citeStep), "citation step marked as failed");
 } finally {
   await browser.close();
 }
